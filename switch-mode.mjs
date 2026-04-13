@@ -2,8 +2,10 @@
  * Bascule ha-card-playground entre mode dev et mode prod dans configuration.yaml
  *
  * Usage :
- *   npm run use:dev   → http://192.168.0.17:5500/ha-card-playground.js
+ *   npm run use:dev   → DEV_URL  (serveur local)
  *   npm run use:prod  → /local/ha-card-playground.js  (+ build + copie NAS)
+ *
+ * Config : copier switch-config.example.json → switch-config.json et remplir les valeurs.
  */
 import fs from "fs";
 import path from "path";
@@ -12,12 +14,20 @@ import { execSync } from "child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const HA_CONFIG   = "//192.168.0.51/config/configuration.yaml";
-const HA_WWW_DEST = "//192.168.0.51/config/www/ha-card-playground.js";
-const HA_URL      = "http://192.168.0.51:8123";
-const HA_TOKEN    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIyZjBmMDlhODQzNTc0MTdkYWNmODg5ZDg2YjAyMmU4OSIsImlhdCI6MTc3NTM0NjMxMywiZXhwIjoyMDkwNzA2MzEzfQ.Y0AVcxOuJM45hh3AGEROlWStjlGjvx-fVhwI2_znC_c";
+const cfgPath = path.join(__dirname, "switch-config.json");
+if (!fs.existsSync(cfgPath)) {
+  console.error("❌ switch-config.json introuvable.");
+  console.error("   Copie switch-config.example.json → switch-config.json et remplis les valeurs.");
+  process.exit(1);
+}
+const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
 
-const DEV_URL  = "http://192.168.0.17:5500/ha-card-playground.js";
+const HA_CONFIG   = cfg.HA_CONFIG;
+const HA_WWW_DEST = cfg.HA_WWW_DEST;
+const HA_URL      = cfg.HA_URL;
+const HA_TOKEN    = cfg.HA_TOKEN;
+
+const DEV_URL  = cfg.DEV_URL;
 const PROD_URL = "/local/ha-card-playground.js";
 
 const mode = process.argv[2];
