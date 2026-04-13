@@ -362,13 +362,87 @@ Opens via the **⚙** button in the header. Closes when clicking anywhere outsid
 
 ---
 
+## 📸 Screenshots
+
+### Editor + Live Preview
+
+![HA Card Playground — main view](screenshots/main-view.png)
+
+### Full-screen Editor Mode
+
+![HA Card Playground — fullscreen editor](screenshots/fullscreen-editor.png)
+
+### Save Blocked on Error — File Protection
+
+![HA Card Playground — save blocked when errors detected](screenshots/yaml-checker-save-blocked.png)
+
+> When errors are detected in file mode, the **⬇ Fichier** (download) button turns red and is disabled — you can't accidentally overwrite your config with broken YAML. Fix all errors first.
+
+### YAML Checker on a Real Config File (drag & drop)
+
+![HA Card Playground — checker on a config file](screenshots/yaml-checker-config-file.png)
+
+> Drag & drop any `.yaml` file from your HA config onto the editor. The checker validates `!include` paths, indentation, and calls the HA API to verify the config — perfect for editing `configuration.yaml` or package files.
+
+### Settings Panel
+
+![HA Card Playground — settings panel](screenshots/settings-panel.png)
+
+> Column width presets (1–10 col) + pixel slider, light/dark theme toggle, auto-save and auto full-screen on detach.
+
+### YAML Checker — Real-time Error Detection
+
+![HA Card Playground — YAML checker error button](screenshots/yaml-checker-error.png)
+
+![HA Card Playground — YAML checker error detail](screenshots/yaml-checker-detail.png)
+
+> The **✗ Erreurs** button turns red when issues are detected. Click it to expand the detail panel — errors are clickable and pinpoint the exact line and column. Auto-check runs 800 ms after each keystroke.
+
+![HA Card Playground — YAML checker all validations OK](screenshots/yaml-checker-ok.png)
+
+> When all checks pass, the panel lists every validation with its result — YAML syntax, indentation, entity IDs, services, card types, `!include` paths, and more.
+
+### Syntax Highlighting + Inline Color Picker
+
+![HA Card Playground — syntax highlighting and color picker](screenshots/syntax-highlighting-color-picker.png)
+
+> Full syntax highlighting for YAML, Jinja2 templates and embedded JavaScript. Hex color values (`#rgb`, `#rrggbb`) render an inline color swatch — click it to open the native color picker and update the value in real time.
+
+### Autocomplete — MDI Icon Picker (7447 icons with live SVG preview)
+
+![HA Card Playground — MDI icon autocomplete](screenshots/autocomplete-mdi-icons.png)
+
+> `icon:` triggers the full MDI icon library — 7447 icons, each with a real `<ha-icon>` SVG preview. Type to filter live.
+
+### Smart Autocomplete — HACS custom cards + YAML checker
+
+![HA Card Playground — autocomplete custom cards](screenshots/autocomplete-custom-cards.png)
+
+> `type: custom:` triggers live detection of all installed HACS cards. The YAML checker (red **✗ Erreurs** button) flags issues in real time — here the card type is not yet chosen.
+
+### Detachable Preview Window (zoom controls — not actual card size)
+
+![HA Card Playground — detached window zoomed](screenshots/detached-window-zoomed.png)
+
+> The detached window can be zoomed (25%–200%) to inspect card details. The badge *"Aperçu · taille non contractuelle"* is automatically shown when zoom ≠ 100% as a reminder that the displayed size is not the real card size.
+
+---
+
 ## 📦 Installation via HACS
 
 1. Open **HACS** → **Frontend**
-2. Click **⋮ → Custom repositories**
-3. Add `https://github.com/VDG7/ha-card-playground` — category **Dashboard**
-4. Install **HA Card Playground**
-5. Reload Home Assistant
+2. Search for **HA Card Playground** and install it
+3. Reload Home Assistant
+4. Add the panel in your `configuration.yaml`:
+
+```yaml
+panel_custom:
+  - name: ha-card-playground
+    sidebar_title: Card Playground
+    sidebar_icon: mdi:palette
+    url_path: card-playground
+    module_url: /local/community/ha-card-playground/ha-card-playground.js
+```
 
 ---
 
