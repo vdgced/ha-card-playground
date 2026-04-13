@@ -1,8 +1,6 @@
 {
   "name": "HA Card Playground",
-  "content_in_root": false,
   "filename": "ha-card-playground.js",
   "render_readme": true,
-  "homeassistant": "2023.0.0",
-  "country": ["BE"]
+  "homeassistant": "2023.0.0"
 }
