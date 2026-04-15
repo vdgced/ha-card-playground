@@ -426,9 +426,9 @@ Opens via the **⚙** button in the header. Closes when clicking anywhere outsid
 ## 📦 Installation via HACS
 
 1. Open **HACS** → **Frontend**
-2. Search for **HA Card Playground** and install it
-3. Reload Home Assistant
-4. Add the panel in your `configuration.yaml`:
+2. Click the three-dot menu → **Custom repositories**, add `https://github.com/vdgced/ha-card-playground` as type **Frontend**
+3. Search for **HA Card Playground** and install it
+4. Add the following to your `configuration.yaml`:
 
 ```yaml
 panel_custom:
@@ -438,6 +438,8 @@ panel_custom:
     url_path: card-playground
     module_url: /local/community/ha-card-playground/ha-card-playground.js
 ```
+
+5. **Restart Home Assistant** — the **Card Playground** panel will appear in the sidebar
 
 ---
 

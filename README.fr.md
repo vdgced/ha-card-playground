@@ -270,10 +270,20 @@ La barre s'adapte automatiquement — les boutons passent à la ligne si la fen�
 L'installation se fait en quelques clics depuis **HACS**, le gestionnaire d'extensions de Home Assistant.
 
 1. Ouvrez **HACS** dans votre Home Assistant
-2. Allez dans la section **Interface**
+2. Cliquez sur les trois points → **Dépôts personnalisés**, ajoutez `https://github.com/vdgced/ha-card-playground` en type **Interface**
 3. Cherchez **HA Card Playground** et installez-le
-4. Rechargez votre page Home Assistant
-5. Le panneau **Card Playground** apparaît dans votre barre latérale — c'est prêt !
+4. Ajoutez ceci dans votre `configuration.yaml` :
+
+```yaml
+panel_custom:
+  - name: ha-card-playground
+    sidebar_title: Card Playground
+    sidebar_icon: mdi:palette
+    url_path: card-playground
+    module_url: /local/community/ha-card-playground/ha-card-playground.js
+```
+
+5. **Redémarrez Home Assistant** — le panneau **Card Playground** apparaît dans votre barre latérale
 
 ---
 
