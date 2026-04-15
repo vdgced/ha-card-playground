@@ -373,17 +373,11 @@ Opens via the **⚙** button in the header. Closes when clicking anywhere outsid
 
 ![HA Card Playground — fullscreen editor](screenshots/fullscreen-editor.png)
 
-### Save Blocked on Error — File Protection
+### YAML Search — 🔍 Chercher
 
-![HA Card Playground — save blocked when errors detected](screenshots/yaml-checker-save-blocked.png)
+![HA Card Playground — YAML search popup](screenshots/yaml-checker-config-file.png)
 
-> When errors are detected in file mode, the **⬇ Fichier** (download) button turns red and is disabled — you can't accidentally overwrite your config with broken YAML. Fix all errors first.
-
-### YAML Checker on a Real Config File (drag & drop)
-
-![HA Card Playground — checker on a config file](screenshots/yaml-checker-config-file.png)
-
-> Drag & drop any `.yaml` file from your HA config onto the editor. The checker validates `!include` paths, indentation, and calls the HA API to verify the config — perfect for editing `configuration.yaml` or package files.
+> Click **🔍 Chercher** to open the search popup. Results appear from 2 characters — navigate with `↑` / `↓`. Autocomplete suggests entity IDs and card types from the current YAML. The matched line is highlighted with a red gutter marker, left border, and background.
 
 ### Settings Panel
 

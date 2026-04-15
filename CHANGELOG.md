@@ -6,6 +6,16 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ## v0.7.93 — Recherche YAML, inspection bidirectionnelle, unified toolbar, zoom curseur
 
+### Interface — avant / après
+
+**Avant (v0.7.92) :**
+![Interface v0.7.92](screenshots/interface-before.png)
+
+**Après (v0.7.93) :**
+![Interface v0.7.93](screenshots/main-view.png)
+
+---
+
 ### 🔍 Chercher — Recherche YAML avec highlight
 
 Remplace le bouton **📋 Snippets** (supprimé entièrement, code inclus).
