@@ -8,7 +8,9 @@ import threading
 import urllib.request
 import json
 import os
+import re
 import sys
+import subprocess
 
 # ── Configuration (lue depuis switch-config.json) ──────────────────────────────
 _script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -29,8 +31,16 @@ HA_CONFIG    = _cfg["HA_CONFIG"].replace("/", "\\")
 HA_URL       = _cfg["HA_URL"]
 HA_TOKEN     = _cfg["HA_TOKEN"]
 DEV_URL      = _cfg["DEV_URL"]
-HACS_URL     = "/local/community/ha-card-playground/ha-card-playground.js"
+HACS_BASE    = "/local/community/ha-card-playground/ha-card-playground.js"
 OLD_PROD_URL = "/local/ha-card-playground.js"   # ancienne URL prod manuelle
+
+# Lire la version depuis package.json
+try:
+    _pkg = json.loads(open(os.path.join(_script_dir, "package.json"), encoding="utf-8").read())
+    VERSION  = _pkg.get("version", "0.0.0")
+except Exception:
+    VERSION = "0.0.0"
+HACS_URL = f"{HACS_BASE}?v={VERSION}"
 
 # ── Logique ────────────────────────────────────────────────────────────────────
 def read_config():
@@ -53,11 +63,17 @@ def restart_ha():
 def detect_mode(config):
     if DEV_URL in config:
         return "dev"
-    if HACS_URL in config:
+    if HACS_BASE in config:   # substring → détecte avec ou sans ?v=
         return "hacs"
     if OLD_PROD_URL in config:
         return "old_prod"
     return "unknown"
+
+def open_dev_console():
+    """Ouvre un terminal cmd avec npm run serve dans le dossier projet."""
+    cmd = f'cmd.exe /c start cmd /k "cd /d "{_script_dir}" && npm run serve"'
+    subprocess.Popen(cmd, shell=False, executable='cmd.exe',
+                     creationflags=subprocess.CREATE_NEW_CONSOLE)
 
 def switch_to(target, app):
     app.set_status("En cours...", "#f0a500")
@@ -71,30 +87,32 @@ def switch_to(target, app):
 
             if current == target:
                 app.after(0, lambda: app.set_status(
-                    f"Déjà en mode {target.upper()}, rien à changer.", "#888888"))
+                    f"Déjà en mode {target.upper()}.", "#888888"))
+                if target == "dev":
+                    open_dev_console()
                 return
 
-            # Trouver l'URL actuelle à remplacer
-            if current == "dev":
-                from_url = DEV_URL
-            elif current == "hacs":
-                from_url = HACS_URL
-            else:  # old_prod ou unknown → on remplace l'ancienne URL prod
-                from_url = OLD_PROD_URL
+            # Remplacer l'URL — regex pour gérer ?v=... sur l'URL HACS
+            if current == "hacs" or current == "old_prod":
+                # Matcher HACS_BASE avec éventuel ?v=... ou ancienne URL
+                new_config = re.sub(
+                    r'/local/(?:community/ha-card-playground/ha-card-playground|ha-card-playground)\.js(?:\?v=[^\s"\']*)?',
+                    DEV_URL if target == "dev" else HACS_URL,
+                    config
+                )
+            else:
+                # DEV → HACS
+                new_config = config.replace(DEV_URL, HACS_URL)
 
-            to_url = HACS_URL if target == "hacs" else DEV_URL
-
-            if from_url not in config:
-                app.after(0, lambda: app.set_status(
-                    "URL introuvable dans configuration.yaml", "#e05252"))
-                return
-
-            write_config(config.replace(from_url, to_url))
+            write_config(new_config)
             restart_ha()
 
             label = "HACS PROD" if target == "hacs" else "DEV"
             app.after(0, lambda: app.update_mode(
                 target, f"✅ Basculé en {label} — HA redémarre (~30s)"))
+
+            if target == "dev":
+                open_dev_console()
 
         except Exception as e:
             app.after(0, lambda: app.set_status(f"❌ {e}", "#e05252"))

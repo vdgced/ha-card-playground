@@ -4,8 +4,9 @@ import {
   EditorView, keymap, lineNumbers, drawSelection,
   highlightActiveLine, highlightActiveLineGutter,
   ViewPlugin, DecorationSet, Decoration, WidgetType, ViewUpdate,
+  GutterMarker, gutterLineClass,
 } from "@codemirror/view";
-import { EditorState, Compartment, RangeSetBuilder, Prec } from "@codemirror/state";
+import { EditorState, Compartment, RangeSetBuilder, RangeSet, Prec, StateEffect, StateField } from "@codemirror/state";
 import { yaml as yamlLang } from "@codemirror/lang-yaml";
 import { javascript } from "@codemirror/lang-javascript";
 import { defaultKeymap, history, historyKeymap, indentWithTab, indentMore, indentLess } from "@codemirror/commands";
@@ -176,10 +177,11 @@ class ColorSwatchWidget extends WidgetType {
     swatch.addEventListener("mousedown", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const input = document.createElement("input");
       input.type = "color";
       input.value = this._toHex6(this.color);
-      input.style.cssText = "position:fixed;opacity:0;pointer-events:none;width:0;height:0";
+      input.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.bottom}px;width:1px;height:1px;opacity:0.01;border:0;padding:0;margin:0;outline:0;pointer-events:none`;
       document.body.appendChild(input);
 
       input.addEventListener("input", () => {
@@ -194,7 +196,7 @@ class ColorSwatchWidget extends WidgetType {
       input.addEventListener("blur", () => setTimeout(() => {
         if (input.parentNode) document.body.removeChild(input);
       }, 200));
-      input.click();
+      requestAnimationFrame(() => input.click());
     });
 
     return swatch;
@@ -231,6 +233,45 @@ const colorSwatchPlugin = ViewPlugin.fromClass(class {
     return builder.finish();
   }
 }, { decorations: v => v.decorations });
+
+// ── Recherche YAML — highlight de l'occurrence trouvée ──────────────────────
+class _SearchGutterMarker extends GutterMarker {
+  elementClass = 'cm-search-gutter';
+}
+const _searchGutterMark = new _SearchGutterMarker();
+
+interface _SearchHL { decos: DecorationSet; gutterMarks: RangeSet<GutterMarker>; }
+const _searchHighlightEffect = StateEffect.define<{ from: number; to: number } | null>();
+const _searchHighlightField = StateField.define<_SearchHL>({
+  create: () => ({ decos: Decoration.none, gutterMarks: RangeSet.empty }),
+  update({ decos, gutterMarks }, tr) {
+    decos = decos.map(tr.changes);
+    gutterMarks = gutterMarks.map(tr.changes);
+    for (const e of tr.effects) {
+      if (e.is(_searchHighlightEffect)) {
+        if (e.value === null) {
+          decos = Decoration.none;
+          gutterMarks = RangeSet.empty;
+        } else {
+          const { from, to } = e.value;
+          const line = tr.state.doc.lineAt(from);
+          const db = new RangeSetBuilder<Decoration>();
+          db.add(line.from, line.from, Decoration.line({ class: 'cm-search-line' }));
+          db.add(from, to, Decoration.mark({ class: 'cm-search-match' }));
+          decos = db.finish();
+          const gb = new RangeSetBuilder<GutterMarker>();
+          gb.add(line.from, line.from, _searchGutterMark);
+          gutterMarks = gb.finish();
+        }
+      }
+    }
+    return { decos, gutterMarks };
+  },
+  provide: f => [
+    EditorView.decorations.from(f, s => s.decos),
+    gutterLineClass.from(f, s => s.gutterMarks),
+  ],
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPOSANT PRINCIPAL — rend soit l'éditeur, soit l'aperçu selon le hash
@@ -297,8 +338,11 @@ content: |
   private _themeCompartment = new Compartment();
   private _cardElement?: HTMLElement & { hass?: HomeAssistant };
   private _lastCardType = "";
+  private _lastStylesKey = "";
   private _debounceTimer?: ReturnType<typeof setTimeout>;
   private _checkTimer?: ReturnType<typeof setTimeout>;
+  private _highlightTimer?: ReturnType<typeof setTimeout>;
+  private _lastHighlightValue = "";
   private _helpers?: CardHelpers;
   private _channel = new BroadcastChannel(CHANNEL);
   private _previewWin?: WindowProxy | null;
@@ -306,8 +350,12 @@ content: |
   @state() private _parseError: string | null = null;
   @state() private _loading = false;
   @state() private _detached = false;
-  @state() private _splitPct = 50;    // % de largeur pour l'éditeur (20–80)
+  @state() private _splitPct = 62;    // % de largeur pour l'éditeur (62–80)
+  @state() private _previewZoom = 100; // zoom aperçu inline (10–200%)
   @state() private _dragging = false;
+  @state() private _inspectMode = false; // mode inspection carte ↔ YAML
+  @state() private _showInspectBtn = false; // bouton 🔍 visible (feature beta)
+  @state() private _inspectOverlays: Array<{left:number;top:number;width:number;height:number}> = [];
   @state() private _fontSize = 14;   // taille police éditeur (px)
   @state() private _previewHidden = false;      // éditeur plein écran
   @state() private _autoFullOnDetach = false;   // plein écran auto au détachement
@@ -319,7 +367,10 @@ content: |
   @state() private _formatted = false;
   @state() private _darkMode = true;
   @state() private _settingsOpen = false;
-  @state() private _snippetsOpen = false;
+  @state() private _searchOpen = false;
+  @state() private _searchSuggestions: string[] = [];
+  @state() private _searchSugIdx = -1;
+  private _searchLast = '';
   @state() private _desktopWidth = 300;         // largeur colonne desktop (px) — 4 col HA par défaut
   @state() private _checkOpen = false;
   @state() private _checkResult: Array<{ type: 'ok' | 'error' | 'warn'; msg: string }> | null = null;
@@ -345,13 +396,27 @@ content: |
     }
     .header h1 { margin: 0; font-size: 20px; font-weight: 400; }
     .btn {
-      padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;
-      font-size: 14px; background: rgba(255,255,255,.15); color: inherit;
-      transition: background .2s;
+      padding: 5px 14px; border: 1px solid rgba(255,255,255,.22); border-radius: 6px;
+      cursor: pointer; font-size: 13px; font-weight: 600; line-height: 1.6;
+      background: rgba(255,255,255,.1); color: inherit;
+      transition: background .15s, border-color .15s;
     }
-    .btn:hover  { background: rgba(255,255,255,.25); }
-    .btn.active { background: rgba(255,255,255,.35); }
-    .workspace { display: flex; height: calc(100% - 65px); overflow: hidden; user-select: none; }
+    .btn:hover  { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.38); }
+    .btn.active { background: rgba(255,255,255,.28); border-color: rgba(255,255,255,.45); }
+    .unified-toolbar {
+      display: flex; align-items: center; flex-wrap: nowrap; gap: 4px;
+      padding: 6px 24px 6px 12px; flex-shrink: 0;
+      background: var(--secondary-background-color);
+      border-bottom: 1px solid var(--divider-color);
+    }
+    .toolbar-section-label {
+      font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: .05em;
+      color: var(--secondary-text-color); white-space: nowrap; flex-shrink: 0;
+    }
+    .toolbar-sep {
+      width: 1px; height: 22px; background: var(--divider-color); flex-shrink: 0; margin: 0 8px;
+    }
+    .workspace { display: flex; height: calc(100% - 65px - 45px); overflow: hidden; user-select: none; }
     .editor-pane {
       flex: 0 0 var(--editor-w, 50%); display: flex; flex-direction: column; min-width: 0;
     }
@@ -364,12 +429,16 @@ content: |
     .editor-area { flex: 1; overflow: hidden; transition: background .2s; }
     .editor-area.light { background: #ffffff; }
     .font-ctrl {
-      display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end;
+      display: flex; align-items: center; gap: 4px;
+      flex-wrap: nowrap;
+      flex: 1; min-width: 0;
     }
     .font-btn {
-      padding: 1px 7px; border: 1px solid var(--divider-color); border-radius: 4px;
-      cursor: pointer; font-size: 11px; font-weight: 600; line-height: 1.6;
-      background: transparent; color: var(--secondary-text-color);
+      padding: 5px 14px; border: 1px solid var(--divider-color); border-radius: 6px;
+      cursor: pointer; font-size: 13px; font-weight: 600; line-height: 1.6; white-space: nowrap;
+      background: var(--card-background-color, rgba(255,255,255,.07));
+      color: var(--primary-text-color);
+      transition: background .15s, color .15s, border-color .15s;
     }
     .font-btn:hover { background: var(--primary-color); color: white; border-color: var(--primary-color); }
     .font-btn.copied    { background: var(--success-color, #22c55e); color: white; border-color: var(--success-color, #22c55e); }
@@ -377,7 +446,8 @@ content: |
     .font-btn.pasted-fail { background: var(--error-color, #ef4444); color: white; border-color: var(--error-color, #ef4444); }
     .font-btn.saved    { background: var(--warning-color, #f59e0b); color: white; border-color: var(--warning-color, #f59e0b); }
     .font-btn.restored { background: var(--accent-color, var(--primary-color)); color: white; border-color: var(--accent-color, var(--primary-color)); }
-    .font-size-label { font-size: 11px; opacity: .6; min-width: 28px; text-align: center; }
+    .font-btn.active   { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+    .font-size-label { font-size: 13px; font-weight: 700; opacity: .9; min-width: 36px; text-align: center; }
     .editor-area .cm-editor { height: 100%; font-size: var(--code-font-size, 14px); }
     .editor-area .cm-scroller {
       font-family: "Fira Code","Cascadia Code","Consolas",monospace !important;
@@ -399,8 +469,8 @@ content: |
     }
     .preview-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
     .preview-toolbar {
-      display: flex; align-items: center;
-      padding: 6px 16px; background: var(--secondary-background-color);
+      display: flex; align-items: center; flex-wrap: nowrap; overflow: hidden;
+      padding: 6px 24px 6px 12px; background: var(--secondary-background-color);
       border-bottom: 1px solid var(--divider-color); flex-shrink: 0;
     }
     .preview-toolbar .pane-title { padding: 0; background: none; border: none; flex: 1; }
@@ -410,16 +480,20 @@ content: |
       flex: 1; overflow: auto; padding: 24px;
       display: flex; align-items: flex-start; justify-content: center;
       background: var(--primary-background-color, #111827); transition: background .2s;
+      position: relative;
     }
     .workspace.light-mode .preview-area { background: var(--primary-background-color); }
     .preview-frame { width: var(--desktop-w, 300px); max-width: none; }
     .zoom-btn {
-      padding: 1px 7px; border: 1px solid var(--divider-color); border-radius: 4px;
-      cursor: pointer; font-size: 12px; font-weight: 600; line-height: 1.6;
-      background: transparent; color: var(--secondary-text-color);
+      padding: 5px 14px; border: 1px solid var(--divider-color); border-radius: 6px;
+      cursor: pointer; font-size: 13px; font-weight: 600; line-height: 1.6;
+      background: var(--card-background-color, rgba(255,255,255,.07));
+      color: var(--primary-text-color);
+      transition: background .15s, color .15s, border-color .15s;
     }
     .zoom-btn:hover { background: var(--primary-color); color: white; border-color: var(--primary-color); }
-    .zoom-label { font-size: 11px; opacity: .6; min-width: 34px; text-align: center; }
+    .zoom-btn.active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+    .zoom-label { font-size: 13px; font-weight: 700; opacity: .9; min-width: 48px; text-align: center; }
     .preview-col { display: flex; flex-direction: column; align-items: stretch; }
     .preview-badge {
       font-size: 15px; text-align: center; padding: 6px 0 0;
@@ -525,27 +599,39 @@ content: |
     .font-btn.check-ok   { background: var(--success-color, #22c55e); color: white; border-color: var(--success-color, #22c55e); }
     .font-btn.check-warn { background: var(--warning-color, #f59e0b); color: white; border-color: var(--warning-color, #f59e0b); }
     .font-btn.check-error{ background: var(--error-color, #ef4444);   color: white; border-color: var(--error-color, #ef4444); }
-    /* Snippets dropdown */
-    .snippets-panel {
-      position: absolute; top: calc(100% + 4px); left: 0; z-index: 99;
+    /* Search popup */
+    .search-popup {
+      position: absolute; top: calc(100% + 4px); left: 0; z-index: 999;
       background: var(--card-background-color, var(--primary-background-color));
       border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 8px);
-      padding: 8px 0; min-width: 220px;
-      box-shadow: var(--ha-card-box-shadow, 0 4px 20px rgba(0,0,0,.3));
-      max-height: 60vh; overflow-y: auto;
+      display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: var(--ha-card-box-shadow, 0 4px 20px rgba(0,0,0,.4));
     }
-    .snippet-group {
-      padding: 4px 12px 2px;
-      font-size: 10px; font-weight: 600; letter-spacing: .08em;
-      text-transform: uppercase; color: var(--secondary-text-color); opacity: .6;
+    .search-popup-row { display: flex; gap: 6px; align-items: center; padding: 8px 10px; }
+    .search-popup input {
+      border: 1px solid var(--divider-color); border-radius: 4px;
+      background: var(--secondary-background-color); color: var(--primary-text-color);
+      padding: 4px 8px; font-size: 13px; width: 200px; outline: none;
     }
-    .snippet-item {
-      display: block; width: 100%; text-align: left;
-      padding: 6px 16px; border: none; background: transparent;
-      color: var(--primary-text-color); font-size: 13px; cursor: pointer;
-      transition: background .1s;
+    .search-popup input:focus { border-color: var(--primary-color, #3b82f6); }
+    .search-popup-close {
+      background: none; border: none; color: var(--secondary-text-color);
+      cursor: pointer; font-size: 16px; padding: 0 2px; line-height: 1;
     }
-    .snippet-item:hover { background: var(--secondary-background-color); }
+    .search-popup-close:hover { color: var(--primary-text-color); }
+    .search-nav-btn {
+      background: none; border: 1px solid var(--divider-color); border-radius: 4px;
+      color: var(--secondary-text-color); cursor: pointer; font-size: 13px;
+      padding: 2px 7px; line-height: 1; flex-shrink: 0;
+    }
+    .search-nav-btn:hover { background: var(--secondary-background-color); color: var(--primary-text-color); }
+    .search-sug-list { border-top: 1px solid var(--divider-color); }
+    .search-sug-item {
+      display: block; width: 100%; text-align: left; padding: 5px 12px;
+      border: none; background: transparent; color: var(--primary-text-color);
+      font-size: 12px; cursor: pointer; white-space: nowrap;
+    }
+    .search-sug-item:hover, .search-sug-item.active { background: var(--secondary-background-color); color: var(--primary-color, #3b82f6); }
   `;
 
   protected async firstUpdated(): Promise<void> {
@@ -558,6 +644,8 @@ content: |
     if (savedWidth !== null) this._desktopWidth = Number(savedWidth);
     const savedAutoFull = localStorage.getItem("card-playground-auto-full");
     if (savedAutoFull !== null) this._autoFullOnDetach = savedAutoFull === "1";
+    const savedInspect = localStorage.getItem("card-playground-inspect-btn");
+    if (savedInspect !== null) this._showInspectBtn = savedInspect === "1";
     const savedDark = localStorage.getItem("card-playground-dark");
     if (savedDark !== null) this._darkMode = savedDark !== "0";
     this._applyCompletionStyles();
@@ -626,6 +714,9 @@ content: |
     if (ch.has("_autoFullOnDetach")) {
       localStorage.setItem("card-playground-auto-full", this._autoFullOnDetach ? "1" : "0");
     }
+    if (ch.has("_showInspectBtn")) {
+      localStorage.setItem("card-playground-inspect-btn", this._showInspectBtn ? "1" : "0");
+    }
     if (ch.has("_darkMode") && this._cmView) {
       localStorage.setItem("card-playground-dark", this._darkMode ? "1" : "0");
       this._cmView.dispatch({
@@ -650,7 +741,7 @@ content: |
       const ws = this.renderRoot.querySelector(".workspace") as HTMLElement | null;
       if (!ws) return;
       const rect = ws.getBoundingClientRect();
-      const pct = Math.max(20, Math.min(80, ((ev.clientX - rect.left) / rect.width) * 100));
+      const pct = Math.max(62, Math.min(80, ((ev.clientX - rect.left) / rect.width) * 100));
       this._splitPct = pct;
     };
     const onUp = () => {
@@ -2215,145 +2306,104 @@ content: |
     return { from, options };
   };
 
-  private static readonly _SNIPPETS: Array<{ group: string; label: string; yaml: string }> = [
-    {
-      group: "Basique",
-      label: "Entité",
-      yaml: `type: entity
-entity: sun.sun`,
-    },
-    {
-      group: "Basique",
-      label: "Bouton",
-      yaml: `type: button
-entity: light.salon
-name: Salon
-show_state: true`,
-    },
-    {
-      group: "Basique",
-      label: "Markdown",
-      yaml: `type: markdown
-content: |
-  ## Titre
-  Bonjour **{{ now().strftime('%H:%M') }}**`,
-    },
-    {
-      group: "Visualisation",
-      label: "Jauge (gauge)",
-      yaml: `type: gauge
-entity: sensor.temperature
-name: Température
-unit: "°C"
-min: 0
-max: 40
-severity:
-  green: 15
-  yellow: 25
-  red: 32`,
-    },
-    {
-      group: "Visualisation",
-      label: "Historique",
-      yaml: `type: history-graph
-entities:
-  - entity: sensor.temperature
-hours_to_show: 24
-refresh_interval: 0`,
-    },
-    {
-      group: "Visualisation",
-      label: "Statistiques",
-      yaml: `type: statistics-graph
-entities:
-  - entity: sensor.temperature
-period:
-  calendar:
-    period: day
-chart_type: line`,
-    },
-    {
-      group: "Visualisation",
-      label: "Météo",
-      yaml: `type: weather-forecast
-entity: weather.home
-show_forecast: true
-forecast_type: daily`,
-    },
-    {
-      group: "Contrôle",
-      label: "Thermostat",
-      yaml: `type: thermostat
-entity: climate.salon`,
-    },
-    {
-      group: "Contrôle",
-      label: "Media player",
-      yaml: `type: media-control
-entity: media_player.salon`,
-    },
-    {
-      group: "Mise en page",
-      label: "Vertical stack",
-      yaml: `type: vertical-stack
-cards:
-  - type: entity
-    entity: sun.sun
-  - type: entity
-    entity: sensor.temperature`,
-    },
-    {
-      group: "Mise en page",
-      label: "Horizontal stack",
-      yaml: `type: horizontal-stack
-cards:
-  - type: button
-    entity: light.salon
-  - type: button
-    entity: light.cuisine`,
-    },
-    {
-      group: "Mise en page",
-      label: "Grille (grid)",
-      yaml: `type: grid
-columns: 2
-square: false
-cards:
-  - type: button
-    entity: light.salon
-  - type: button
-    entity: light.cuisine`,
-    },
-    {
-      group: "Avancé",
-      label: "Glance",
-      yaml: `type: glance
-title: Aperçu rapide
-entities:
-  - entity: sun.sun
-  - entity: sensor.temperature
-  - entity: sensor.humidity`,
-    },
-    {
-      group: "Avancé",
-      label: "Picture entity",
-      yaml: `type: picture-entity
-entity: light.salon
-image: /local/images/salon.jpg
-tap_action:
-  action: toggle`,
-    },
-  ];
-
-  private _insertSnippet(yaml: string): void {
-    if (!this._cmView) return;
-    const current = this._cmView.state.doc.toString().trim();
-    if (current.length > 0 && !confirm("Remplacer le contenu actuel par ce snippet ?")) return;
+  private _doSearch(text: string, fromStart = false): void {
+    if (!this._cmView || !text) return;
+    const doc = this._cmView.state.doc.toString();
+    const lower = doc.toLowerCase();
+    const needle = text.toLowerCase();
+    // fromStart=true : live search depuis le début (changement de terme)
+    // fromStart=false : occurrence suivante depuis la fin de la sélection courante
+    const start = fromStart ? 0 : this._cmView.state.selection.main.head + 1;
+    let idx = lower.indexOf(needle, start);
+    if (idx < 0) idx = lower.indexOf(needle, 0); // wraparound
+    if (idx < 0) return; // not found
     this._cmView.dispatch({
-      changes: { from: 0, to: this._cmView.state.doc.length, insert: yaml },
+      selection: { anchor: idx, head: idx + needle.length },
+      effects: [
+        _searchHighlightEffect.of({ from: idx, to: idx + needle.length }),
+        EditorView.scrollIntoView(idx, { y: 'center' }),
+      ],
     });
-    this._snippetsOpen = false;
-    this._cmView.focus();
+    // NE PAS appeler cmView.focus() — garder le focus sur l'input
+    // sinon le prochain Enter irait à CodeMirror et effacerait la sélection
+  }
+
+  private _doSearchPrev(text: string): void {
+    if (!this._cmView || !text) return;
+    const doc = this._cmView.state.doc.toString();
+    const lower = doc.toLowerCase();
+    const needle = text.toLowerCase();
+    const start = this._cmView.state.selection.main.anchor - 1;
+    let idx = lower.lastIndexOf(needle, start);
+    if (idx < 0) idx = lower.lastIndexOf(needle); // wraparound vers la fin
+    if (idx < 0) return;
+    this._cmView.dispatch({
+      selection: { anchor: idx, head: idx + needle.length },
+      effects: [
+        _searchHighlightEffect.of({ from: idx, to: idx + needle.length }),
+        EditorView.scrollIntoView(idx, { y: 'center' }),
+      ],
+    });
+  }
+
+  private _closeSearch(): void {
+    this._searchOpen = false;
+    this._searchSuggestions = [];
+    this._searchSugIdx = -1;
+    if (this._cmView) {
+      this._cmView.dispatch({ effects: _searchHighlightEffect.of(null) });
+    }
+  }
+
+  private _getSearchSuggestions(prefix: string): string[] {
+    if (prefix.length < 2) return [];
+    const lower = prefix.toLowerCase();
+    const seen = new Set<string>();
+    const results: string[] = [];
+
+    // Tente de parser le YAML courant pour extraire les mêmes données que le check
+    let config: Record<string, unknown> | null = null;
+    try { config = parseYaml(this._yaml, { uniqueKeys: false }) as Record<string, unknown>; } catch { /* noop */ }
+
+    if (config) {
+      // 1. Entity IDs référencés dans la carte (même logique que _checkYaml)
+      for (const id of this._extractEntityIds(config)) {
+        if (id.toLowerCase().startsWith(lower) && !seen.has(id)) {
+          seen.add(id); results.push(id);
+          if (results.length >= 10) return results;
+        }
+      }
+      // 2. Types de carte référencés (type:, custom:xxx)
+      for (const { cardType } of this._extractCardTypes(config)) {
+        if (cardType.toLowerCase().startsWith(lower) && !seen.has(cardType)) {
+          seen.add(cardType); results.push(cardType);
+          if (results.length >= 10) return results;
+        }
+      }
+    }
+
+    // 3. Mots bruts du YAML (fallback — pour les clés, valeurs, templates…)
+    if (this._cmView && results.length < 10) {
+      const doc = this._cmView.state.doc.toString();
+      const re = /[\w\-\.\/]+/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(doc)) !== null) {
+        const w = m[0];
+        if (w.length > prefix.length && w.toLowerCase().startsWith(lower) && !seen.has(w)) {
+          seen.add(w); results.push(w);
+          if (results.length >= 10) break;
+        }
+      }
+    }
+
+    return results;
+  }
+
+  private _selectSuggestion(word: string): void {
+    this._searchLast = word;
+    this._searchSuggestions = [];
+    this._searchSugIdx = -1;
+    this._doSearch(word, true);
   }
 
   private _initDragDrop(): void {
@@ -2403,6 +2453,12 @@ tap_action:
         extensions: [
           history(), lineNumbers(), drawSelection(),
           highlightActiveLine(), highlightActiveLineGutter(),
+          _searchHighlightField,
+          EditorView.baseTheme({
+            '.cm-search-match': { background: 'rgba(185,28,28,.85)', borderRadius: '2px' },
+            '.cm-search-line':  { borderLeft: '4px solid rgb(185,28,28)' },
+            '.cm-search-gutter':{ background: 'rgba(185,28,28,.6) !important', color: 'rgb(255,100,100) !important', fontWeight: '700' },
+          }),
           yamlJsLang(), indentUnit.of("  "), colorSwatchPlugin,
           this._themeCompartment.of(this._darkMode ? this._darkTheme() : this._lightTheme()),
           this._fontCompartment.of(EditorView.theme({
@@ -2552,11 +2608,594 @@ tap_action:
               }
             }
           }),
+          // ── Listener cursor : YAML → highlight carte (debounce 350ms) ──
+          EditorView.updateListener.of((u) => {
+            if (!u.selectionSet && !u.docChanged) return;
+            if (this._inspectMode) return;
+            clearTimeout(this._highlightTimer);
+            const snap = u.state;
+            this._highlightTimer = setTimeout(() => this._updateCardHighlight(snap), 350);
+          }),
         ],
       }),
       parent: el,
     });
   }
+
+  // ── Inspection bidirectionnelle carte ↔ YAML ────────────────────────────
+
+  /**
+   * Parcourt récursivement le DOM (shadow piercing) pour collecter tous les custom elements
+   * dont le bounding rect contient le point (x, y).
+   * `withCfg` = éléments avec ._config ; `noCfg` = éléments sans config (fallback tagName).
+   */
+  private _collectCardsAtPoint(
+    x: number, y: number,
+    node: Element | ShadowRoot,
+    withCfg: Array<{ el: Element; area: number; cfg: Record<string, unknown> }>,
+    noCfg: Array<{ el: Element; area: number }>,
+    shadowDepth = 0,  // compte les franchissements de shadow-root uniquement
+  ): void {
+    if (shadowDepth > 14) return;
+    for (const el of Array.from(node.children ?? [])) {
+      let rect: DOMRect;
+      try { rect = el.getBoundingClientRect(); } catch (_) { continue; }
+      if (rect.width === 0 && rect.height === 0) continue;
+      if (rect.left <= x && x <= rect.right && rect.top <= y && y <= rect.bottom) {
+        if (el.tagName.includes('-')) {
+          const any = el as any;
+          const cfg = any._config ?? any.config ?? any.__config;
+          if (cfg && typeof cfg === 'object') {
+            withCfg.push({ el, area: rect.width * rect.height, cfg: cfg as Record<string, unknown> });
+          } else {
+            noCfg.push({ el, area: rect.width * rect.height });
+          }
+        }
+        // Traversal DOM classique : pas d'incrément (les divs/spans ne coûtent rien)
+        this._collectCardsAtPoint(x, y, el, withCfg, noCfg, shadowDepth);
+        // Franchissement shadow root : incrément du compteur
+        if (el.shadowRoot) this._collectCardsAtPoint(x, y, el.shadowRoot, withCfg, noCfg, shadowDepth + 1);
+      }
+    }
+  }
+
+  /** Extrait les textes et attributs significatifs d'une liste d'éléments */
+  private _extractMeaningfulTexts(elements: Element[]): string[] {
+    const texts: string[] = [];
+    for (const el of elements) {
+      for (const attr of ['entity-id', 'entity', 'name', 'title', 'aria-label']) {
+        const val = el.getAttribute?.(attr)?.trim();
+        if (val && val.length >= 2) texts.push(val);
+      }
+      for (const child of el.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          const t = (child.textContent ?? '').trim();
+          if (t.length >= 2 && t.length <= 100) texts.push(t);
+        }
+      }
+    }
+    return [...new Set(texts)];
+  }
+
+  /**
+   * Saute à la ligne `type:` du bloc YAML correspondant au config cliqué.
+   *
+   * Approche générale :
+   * 1. Extraire TOUTES les valeurs string simples du config (clé: valeur)
+   * 2. Trier : `name:` sans template > longueur décroissante (plus long = plus unique)
+   * 3. Pour chaque pattern `clé: valeur`, chercher dans le YAML et remonter au type: parent
+   * 4. Fallback : valeur seule, puis type de carte
+   */
+  private _jumpToCardConfig(cfg: Record<string, unknown>): boolean {
+    if (!this._cmView) return false;
+    const doc = this._cmView.state.doc;
+    const fullText = doc.toString();
+    const cardType = cfg.type ? String(cfg.type) : '';
+
+    // Clés à ignorer (objets complexes ou props structurelles non-identifiantes)
+    const SKIP = new Set([
+      'styles','card_mod','tap_action','hold_action','double_tap_action',
+      'cards','card','conditions','custom_fields','service_data','target',
+      'variables','trigger','action_data','state_filter','type',
+      // Props structurelles qui ne désignent pas un contenu identifiable
+      'mode','layout','direction','columns','column_span','rows','row_span',
+      'color','color_type','size','aspect_ratio','show_state','show_name',
+      'show_icon','show_label','show_last_changed',
+    ]);
+
+    // Valeurs layout/CSS trop génériques pour identifier un bloc YAML de manière fiable
+    const VAL_SKIP = new Set([
+      'vertical','horizontal','none','auto','left','right','center',
+      'top','bottom','flex','block','inline','on','off','true','false',
+      'open','close','closed','start','end','wrap','nowrap',
+    ]);
+
+    // Construire la liste des patterns (clé: valeur) à chercher dans le YAML
+    const patterns: Array<{ key: string; value: string }> = [];
+    const addPattern = (key: string, val: unknown) => {
+      if (SKIP.has(key)) return;
+      if (typeof val !== 'string') return;
+      const v = val.trim();
+      // Valeur trop courte, trop longue, ou template JS
+      if (v.length < 3 || v.length > 120 || v.includes('[[[') ||
+          v.startsWith('{') || v.startsWith('[') || v.startsWith('<')) return;
+      // Valeur générique layout/CSS — pas un identifiant fiable
+      if (VAL_SKIP.has(v.toLowerCase())) return;
+      patterns.push({ key, value: v });
+    };
+
+    for (const [k, v] of Object.entries(cfg)) addPattern(k, v);
+
+    // Trier : name simple en premier, puis valeur plus longue = plus unique
+    patterns.sort((a, b) => {
+      const aName = a.key === 'name' && !a.value.includes('[[[');
+      const bName = b.key === 'name' && !b.value.includes('[[[');
+      if (aName !== bName) return aName ? -1 : 1;
+      return b.value.length - a.value.length;
+    });
+
+    // Chercher chaque pattern et naviguer vers le bloc YAML correspondant
+    const tryJump = (searchValue: string, requireType: boolean): boolean => {
+      let searchFrom = 0;
+      while (searchFrom < fullText.length) {
+        const idx = fullText.indexOf(searchValue, searchFrom);
+        if (idx < 0) break;
+        const line = doc.lineAt(idx);
+        const indent = (line.text.match(/^(\s*)/) ?? ['', ''])[1].length;
+
+        // ── Scan arrière : chercher type: au même niveau ou "- type:" au niveau parent ──
+        let ln = line.number - 1;
+        let foundBackward = false;
+        while (ln >= 1) {
+          const prev = doc.line(ln);
+          const prevIndent = (prev.text.match(/^(\s*)/) ?? ['', ''])[1].length;
+          const trimmed = prev.text.trimStart();
+          if (prevIndent < indent) {
+            // Cas liste YAML : "- type: ..." au niveau parent (indent < celui des props)
+            const afterDash = trimmed.replace(/^-\s*/, '');
+            if (afterDash.startsWith('type:')) {
+              if (!requireType || !cardType || afterDash.includes(cardType)) {
+                this._goTo(prev.from); return true;
+              }
+            }
+            break;
+          }
+          if (prevIndent === indent && trimmed.startsWith('type:')) {
+            if (!requireType || !cardType || trimmed.includes(cardType)) {
+              this._goTo(prev.from); return true;
+            }
+            break;
+          }
+          ln--;
+        }
+
+        // ── Scan avant : entity-row où type: vient APRÈS entity: (ex: slider-entity-row) ──
+        if (!foundBackward) {
+          let fln = line.number + 1;
+          while (fln <= doc.lines && fln <= line.number + 8) {
+            const next = doc.line(fln);
+            const nextIndent = (next.text.match(/^(\s*)/) ?? ['', ''])[1].length;
+            const trimmed = next.text.trimStart();
+            if (nextIndent < indent) break;
+            if (trimmed.startsWith('type:')) {
+              if (!requireType || !cardType || trimmed.includes(cardType)) {
+                // Sauter sur la ligne type: (l'en-tête du bloc), pas la valeur trouvée
+                this._goTo(next.from); return true;
+              }
+              break;
+            }
+            fln++;
+          }
+        }
+
+        searchFrom = idx + searchValue.length;
+      }
+      return false;
+    };
+
+    // Passe 1 : pattern `clé: valeur` + vérification du type
+    for (const { key, value } of patterns) {
+      if (tryJump(`${key}: ${value}`, true)) return true;
+    }
+    // Passe 2 : pattern `clé: valeur` sans vérification du type (type inconnu)
+    for (const { key, value } of patterns) {
+      if (tryJump(`${key}: ${value}`, false)) return true;
+    }
+    // Passe 3 : valeur seule (dans tout le YAML)
+    for (const { value } of patterns) {
+      const idx = fullText.indexOf(value);
+      if (idx >= 0) { this._goTo(idx); return true; }
+    }
+    // Passe 4 : type de carte — seulement si l'occurrence est UNIQUE dans le YAML
+    // Si multiple occurrences, on retourne false pour que le fallback positionnel prenne le relai
+    if (cardType && !['vertical-stack','horizontal-stack','grid','entities','conditional'].includes(cardType)) {
+      const searchStr = `type: ${cardType}`;
+      const first = fullText.indexOf(searchStr);
+      if (first >= 0) {
+        const second = fullText.indexOf(searchStr, first + searchStr.length);
+        if (second < 0) { this._goTo(first); return true; }
+        // Plusieurs occurrences → fallback positionnel dans l'appelant
+      }
+    }
+    return false;
+  }
+
+  /** Déplace le curseur de l'éditeur à une position absolue et centre la vue */
+  private _goTo(pos: number): void {
+    if (!this._cmView) return;
+    this._cmView.dispatch({
+      selection: { anchor: pos },
+      scrollIntoView: true,
+      effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+    });
+    this._cmView.focus();
+  }
+
+  /**
+   * Cherche un texte visible dans le YAML comme valeur de clé connue.
+   * Ordre : name/title/label avec et sans guillemets, puis occurrence brute.
+   */
+  /**
+   * Trouve la position YAML de la N-ème entrée dans le bloc `cards:` d'un container.
+   * Utilisé quand _jumpToCardConfig échoue (carte 100% templates, aucun identifiant littéral).
+   * Requiert que le parent ait un type unique dans le YAML.
+   */
+  private _findNthCardInParent(parentCfg: Record<string, unknown>, cardIdx: number): number | null {
+    if (!this._cmView) return null;
+    const doc = this._cmView.state.doc;
+    const fullText = doc.toString();
+
+    // Trouver le bloc parent dans le YAML via son type
+    const parentType = String(parentCfg.type ?? '');
+    if (!parentType) return null;
+    const parentTypeStr = `type: ${parentType}`;
+    const parentStart = fullText.indexOf(parentTypeStr);
+    if (parentStart < 0) return null;
+    // N'utiliser que si occurrence unique (sinon on ne sait pas quel bloc)
+    if (fullText.indexOf(parentTypeStr, parentStart + parentTypeStr.length) >= 0) return null;
+
+    const parentLine = doc.lineAt(parentStart);
+    const parentIndent = (parentLine.text.match(/^(\s*)/) ?? ['', ''])[1].length;
+
+    // Chercher la ligne `cards:` dans le bloc parent
+    let ln = parentLine.number + 1;
+    let cardsLn = -1;
+    while (ln <= doc.lines) {
+      const l = doc.line(ln);
+      if (l.text.trim() === '') { ln++; continue; }
+      const li = (l.text.match(/^(\s*)/) ?? ['', ''])[1].length;
+      if (li <= parentIndent) break; // Sorti du bloc parent
+      if (l.text.trimStart().startsWith('cards:')) { cardsLn = ln; break; }
+      ln++;
+    }
+    if (cardsLn < 0) return null;
+
+    // Compter les entrées de liste YAML après `cards:`
+    ln = cardsLn + 1;
+    let entryIndent = -1;
+    let entryCount = 0;
+    while (ln <= doc.lines) {
+      const l = doc.line(ln);
+      if (l.text.trim() === '') { ln++; continue; }
+      const li = (l.text.match(/^(\s*)/) ?? ['', ''])[1].length;
+      const trimmed = l.text.trimStart();
+      // Premier tiret de liste fixe le niveau d'indentation
+      if (entryIndent < 0 && trimmed.startsWith('- ')) entryIndent = li;
+      if (entryIndent >= 0) {
+        if (li < entryIndent) break; // Sorti de la liste
+        if (li === entryIndent && trimmed.startsWith('- ')) {
+          if (entryCount === cardIdx) {
+            // Trouvé : renvoyer la position de la ligne type: de cette entrée
+            const afterDash = trimmed.slice(2);
+            if (afterDash.startsWith('type:')) return l.from;
+            // Chercher type: dans les prochaines lignes
+            for (let sl = ln + 1; sl <= Math.min(ln + 6, doc.lines); sl++) {
+              const sl_l = doc.line(sl);
+              if (sl_l.text.trimStart().startsWith('type:')) return sl_l.from;
+            }
+            return l.from; // Fallback : ligne du tiret
+          }
+          entryCount++;
+        }
+      }
+      ln++;
+    }
+    return null;
+  }
+
+  private _jumpToYamlMatch(texts: string[]): void {
+    if (!this._cmView) return;
+    const doc = this._cmView.state.doc.toString();
+    const KEYS = ['name','title','label','header','content'];
+    for (const text of texts) {
+      // Essayer clé: valeur (avec ou sans guillemets)
+      for (const key of KEYS) {
+        for (const q of ['', '"', "'"]) {
+          const idx = doc.indexOf(`${key}: ${q}${text}${q}`);
+          if (idx >= 0) { this._goTo(idx); return; }
+        }
+      }
+    }
+    // Fallback : occurrence brute — seulement pour les textes "nom propre"
+    // (contient espace, tiret, ou >= 7 chars) pour éviter les mots structurels courts
+    for (const text of texts) {
+      if (text.length < 7 && !text.includes(' ') && !text.includes('-')) continue;
+      const idx = doc.indexOf(text);
+      if (idx >= 0) { this._goTo(idx); return; }
+    }
+  }
+
+  /** Cherche un texte dans le DOM de la carte (shadow piercing) et met à jour les overlays */
+  private _updateCardHighlight(state: EditorState): void {
+    const line = state.doc.lineAt(state.selection.main.head);
+    const raw = line.text;
+    const colonIdx = raw.indexOf(':');
+    let value = (colonIdx >= 0 ? raw.slice(colonIdx + 1) : raw).trim();
+    value = value.replace(/^["'`]|["'`]$/g, '').trim();
+    // Ignore les valeurs trop courtes, clés seules, ou structures complexes
+    if (value.length < 3 || value.startsWith('{') || value.startsWith('[') || value.startsWith('!')) {
+      if (this._inspectOverlays.length) this._inspectOverlays = [];
+      this._lastHighlightValue = '';
+      return;
+    }
+    // Cache : ne re-traverser le DOM que si la valeur a changé
+    if (value === this._lastHighlightValue) return;
+    this._lastHighlightValue = value;
+    const frame = this.renderRoot.querySelector('.preview-frame') as HTMLElement | null;
+    if (!frame || !frame.firstElementChild) { this._inspectOverlays = []; return; }
+    const found = this._findTextInDOM(frame.firstElementChild, value);
+    const zoom = this._previewZoom / 100;
+    const frameRect = frame.getBoundingClientRect();
+    this._inspectOverlays = found.slice(0, 6).map(el => {
+      const r = el.getBoundingClientRect();
+      return {
+        left:   (r.left   - frameRect.left) / zoom,
+        top:    (r.top    - frameRect.top)  / zoom,
+        width:  r.width  / zoom,
+        height: r.height / zoom,
+      };
+    });
+  }
+
+  /** Parcourt récursivement DOM + shadow roots pour trouver les éléments contenant le texte (max 6) */
+  private _findTextInDOM(root: Element | ShadowRoot, text: string): Element[] {
+    const results: Element[] = [];
+    const lower = text.toLowerCase();
+    const MAX = 6;
+    const walk = (node: Node): void => {
+      if (results.length >= MAX) return; // early exit
+      if (node.nodeType === Node.TEXT_NODE) {
+        const content = (node.textContent ?? '').trim();
+        const parent = (node as Text).parentElement;
+        if (content.toLowerCase().includes(lower) && parent &&
+            parent.tagName !== 'STYLE' && parent.tagName !== 'SCRIPT') {
+          results.push(parent);
+        }
+        return;
+      }
+      if (node instanceof Element && node.shadowRoot) walk(node.shadowRoot);
+      for (const child of node.childNodes) {
+        if (results.length >= MAX) return;
+        walk(child);
+      }
+    };
+    walk(root);
+    return [...new Set(results)];
+  }
+
+  /** Gestionnaire de clic en mode inspection : carte → YAML */
+  private _onInspectClick = (e: MouseEvent): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    this._inspectMode = false;
+    this._inspectOverlays = [];
+    try {
+      const frame = this.renderRoot.querySelector('.preview-frame') as HTMLElement | null;
+      if (!frame || !frame.firstElementChild) return;
+      const root = frame.firstElementChild;
+
+      type C = { el: Element; area: number; cfg: Record<string, unknown> };
+      const withCfg: C[] = [];
+      const noCfg: Array<{ el: Element; area: number }> = [];
+
+      // ── Traversal BoundingRect ───────────────────────────────────────────────
+      // Parcourt récursivement les shadow roots ouverts sous la preview-frame
+      this._collectCardsAtPoint(e.clientX, e.clientY, root, withCfg, noCfg);
+      if (root.shadowRoot) this._collectCardsAtPoint(e.clientX, e.clientY, root.shadowRoot, withCfg, noCfg);
+
+      // Trier : entité présente > pas hui-* > petite surface (plus spécifique)
+      withCfg.sort((a, b) => {
+        const aEnt = !!(a.cfg.entity || a.cfg.entity_id);
+        const bEnt = !!(b.cfg.entity || b.cfg.entity_id);
+        if (aEnt !== bEnt) return aEnt ? -1 : 1;
+        const aHui = a.el.tagName.toLowerCase().startsWith('hui-');
+        const bHui = b.el.tagName.toLowerCase().startsWith('hui-');
+        if (aHui !== bHui) return aHui ? 1 : -1;
+        return a.area - b.area;
+      });
+
+      // Essayer chaque candidat avec config
+      for (const { el, cfg } of withCfg) {
+        // Cas spécial : carte entities — utiliser la position Y pour choisir la bonne ligne d'entité
+        // (clic sur label ou valeur d'une ligne peut tomber hors des bounds du custom element)
+        if (Array.isArray(cfg.entities) && (cfg.entities as unknown[]).length > 0) {
+          const rect = el.getBoundingClientRect();
+          const rows = cfg.entities as Array<Record<string, unknown>>;
+          const rowRatio = rect.height > 0
+            ? Math.max(0, Math.min(0.999, (e.clientY - rect.top) / rect.height)) : 0;
+          const estIdx = Math.min(rows.length - 1, Math.floor(rowRatio * rows.length));
+          for (let d = 0; d < rows.length; d++) {
+            const rowCfg = rows[(estIdx + d) % rows.length];
+            if (rowCfg && typeof rowCfg === 'object' && this._jumpToCardConfig(rowCfg)) return;
+          }
+          continue;
+        }
+
+        let resolved: Record<string, unknown> = cfg;
+        if (!resolved.entity && !resolved.entity_id && cfg.card && typeof cfg.card === 'object') {
+          resolved = cfg.card as Record<string, unknown>;
+        }
+        const detectedType: string = (resolved.type as string | undefined)
+          ?? (cfg.type as string | undefined)
+          ?? `custom:${el.tagName.toLowerCase()}`;
+        const fullCfg: Record<string, unknown> = { type: detectedType, ...resolved };
+        if (fullCfg.entity || fullCfg.entity_id || fullCfg.name || fullCfg.type) {
+          if (this._jumpToCardConfig(fullCfg)) return;
+        }
+      }
+
+      // Éléments sans config → chercher par tagName dans le YAML
+      noCfg.sort((a, b) => a.area - b.area);
+      const fullText = this._cmView?.state.doc.toString() ?? '';
+      for (const { el } of noCfg.slice(0, 5)) {
+        const t = el.tagName.toLowerCase();
+        // Convertir 'custom-foo-bar' → 'custom:foo-bar' pour matcher le YAML
+        const customType = t.startsWith('custom-') ? `custom:${t.slice(7)}` : t;
+        const idx = fullText.indexOf(`type: ${customType}`);
+        if (idx >= 0) { this._goTo(idx); return; }
+        const idx2 = fullText.indexOf(`type: custom:${t}`);
+        if (idx2 >= 0) { this._goTo(idx2); return; }
+      }
+
+      // ── Méthode 3 : extraction de texte via walker BoundingRect (shadow-aware) ──
+      // Traverse le même arbre que _collectCardsAtPoint mais collecte le texte des
+      // éléments non-custom (div#name.ellipsis etc. de button-card) au point cliqué.
+      // Plus fiable que document.elementsFromPoint qui ne perce pas toujours les shadow roots imbriqués.
+      {
+        const YAML_RE   = /^(type|entity|cards|entities|conditions|tap_action|hold_action|styles|card_mod):/i;
+        const NUM_RE    = /^\d+(\.\d+)?(%|px|em|rem|s|ms|°|vh|vw)?$/;
+        const TMPL_RE   = /\[\[\[|\{\{/;
+        const LAYOUT_WORDS = new Set([
+          'vertical','horizontal','stack','card','grid','row','column','col',
+          'none','auto','left','right','center','top','bottom','flex','block',
+          'inline','on','off','true','false','open','close','closed',
+        ]);
+        const isGoodText = (t: string) =>
+          t.length >= 2 && t.length <= 80 &&
+          !YAML_RE.test(t) && !NUM_RE.test(t) && !TMPL_RE.test(t) &&
+          !t.startsWith('{') && !t.startsWith('[') && !t.startsWith('<') &&
+          !LAYOUT_WORDS.has(t.toLowerCase());
+
+        const previewTexts: string[] = [];
+
+        const walkForText = (node: Element | ShadowRoot, depth: number) => {
+          if (depth > 14) return;
+          for (const el of Array.from((node as any).children ?? [])) {
+            let rect: DOMRect;
+            try { rect = (el as Element).getBoundingClientRect(); } catch (_) { continue; }
+            if (!rect || (rect.width === 0 && rect.height === 0)) continue;
+            if (rect.left > e.clientX || e.clientX > rect.right) continue;
+            if (rect.top  > e.clientY || e.clientY > rect.bottom) continue;
+            // Texte des nœuds texte directs
+            for (const child of (el as Element).childNodes) {
+              if (child.nodeType !== Node.TEXT_NODE) continue;
+              const t = (child.textContent ?? '').trim().replace(/\s+/g, ' ');
+              if (isGoodText(t)) previewTexts.push(t);
+            }
+            // Attributs sémantiques
+            for (const attr of ['aria-label','title','alt']) {
+              const v = (el as Element).getAttribute?.(attr)?.trim() ?? '';
+              if (isGoodText(v)) previewTexts.push(v);
+            }
+            walkForText(el as Element, depth + 1);
+            if ((el as Element).shadowRoot) walkForText((el as Element).shadowRoot!, depth + 1);
+          }
+        };
+
+        walkForText(root, 0);
+        if (root.shadowRoot) walkForText(root.shadowRoot, 0);
+
+        const uniqTexts = [...new Set(previewTexts)];
+        if (uniqTexts.length > 0) { this._jumpToYamlMatch(uniqTexts); return; }
+      }
+
+      // ── Fallback positionnel : plusieurs occurrences du même type dans le YAML ─
+      // Dernier recours absolu. Stratégie 0 (nouvelle) : si un container parent a cfg.cards,
+      // utiliser l'index DOM pour accéder au config exact depuis cfg.cards[idx].
+      // Stratégie 1 : index DOM parmi siblings du même type → occ[sibIdx] dans le YAML.
+      // Stratégie 2 : ratio Y dans le rect du parent.
+      {
+        const GENERIC = new Set(['vertical-stack','horizontal-stack','grid','entities','conditional']);
+        for (const { el, cfg, area } of withCfg) {
+          const rawTag = el.tagName.toLowerCase();
+          const ct = (cfg.type as string | undefined)
+            ?? (rawTag.startsWith('custom-') ? `custom:${rawTag.slice(7)}` : `custom:${rawTag}`);
+          if (!ct || GENERIC.has(ct) || rawTag.startsWith('hui-')) continue;
+
+          // Stratégie 0 : parent container avec cfg.cards
+          // a) Égalité par référence : cfg === parentCfg.cards[i] → index exact sans heuristique DOM
+          // b) _jumpToCardConfig sur le config ciblé (fonctionne si propriété littérale)
+          // Stratégie 0 : parent container avec cfg.cards
+          // hui-card strip le `type` avant setConfig → référence cassée → comparaison structurelle
+          const parentEntry = withCfg.find(w =>
+            w.el !== el && Array.isArray(w.cfg.cards) && w.area > area
+          );
+          if (parentEntry) {
+            const parentCards = parentEntry.cfg.cards as Record<string, unknown>[];
+
+            // a) Comparaison structurelle : tous champs sauf `type` (hui-card strip le type)
+            const cfgMatch = (child: Record<string, unknown>, parent: Record<string, unknown>): boolean => {
+              const keys = Object.keys(child).filter(k => k !== 'type');
+              if (keys.length === 0) return false;
+              try { return keys.every(k => JSON.stringify(child[k]) === JSON.stringify(parent[k])); }
+              catch { return false; }
+            };
+            let targetIdx = parentCards.findIndex(c => cfgMatch(cfg, c as Record<string, unknown>));
+
+            // b) Fallback DOM : remonter jusqu'au premier ancêtre avec >1 enfants
+            //    (évite les wrapper divs qui ont 1 seul enfant chacun)
+            if (targetIdx < 0) {
+              let container: Element | null = el.parentElement;
+              while (container && container.children.length <= 1) container = container.parentElement;
+              if (container) {
+                let ancestor: Element | null = el;
+                while (ancestor && ancestor.parentElement !== container) ancestor = ancestor.parentElement;
+                if (ancestor) {
+                  const idx = Array.from(container.children).indexOf(ancestor);
+                  if (idx >= 0 && idx < parentCards.length) targetIdx = idx;
+                }
+              }
+            }
+
+            if (targetIdx >= 0) {
+              const specificCfg = parentCards[targetIdx];
+              if (specificCfg && typeof specificCfg === 'object') {
+                // Tenter via le config ciblé (fonctionne si entity/name/icon littéraux)
+                if (this._jumpToCardConfig(specificCfg as Record<string, unknown>)) return;
+                // Dernier recours : scan YAML bloc parent → N-ème entrée de cards:
+                const nthPos = this._findNthCardInParent(parentEntry.cfg, targetIdx);
+                if (nthPos !== null) { this._goTo(nthPos); return; }
+              }
+            }
+          }
+
+          // Stratégie 1 : occurrences YAML globales + index DOM parmi siblings du même type
+          const ss = `type: ${ct}`;
+          const occ: number[] = [];
+          let p = 0;
+          while (true) { const i = fullText.indexOf(ss, p); if (i < 0) break; occ.push(i); p = i + ss.length; }
+          if (occ.length === 0) continue;
+          if (occ.length === 1) { this._goTo(occ[0]); return; }
+
+          {
+            const domParent = el.parentElement;
+            if (domParent) {
+              const sameType = Array.from(domParent.children).filter(c => c.tagName === el.tagName);
+              const sibIdx = sameType.indexOf(el);
+              if (sibIdx >= 0 && sibIdx < occ.length) { this._goTo(occ[sibIdx]); return; }
+            }
+          }
+
+          // Stratégie 2 : ratio Y dans le rect du parent
+          const parentRect = (el.parentElement ?? frame).getBoundingClientRect();
+          const yRatio = parentRect.height > 0
+            ? Math.max(0, Math.min(0.999, (e.clientY - parentRect.top) / parentRect.height)) : 0;
+          const est = Math.min(occ.length - 1, Math.floor(yRatio * occ.length));
+          this._goTo(occ[est]); return;
+        }
+      }
+    } catch (_) { /* sécurité — ne jamais bloquer l'UI */ }
+  };
 
   private _scheduleRender(): void {
     clearTimeout(this._debounceTimer);
@@ -2588,8 +3227,9 @@ tap_action:
 
     const cardType = config.type as string;
 
-    // Mise à jour en place si même type → zéro flickering
-    if (cardType === this._lastCardType && this._cardElement) {
+    // Mise à jour en place si même type ET styles inchangés → zéro flickering
+    const stylesKey = JSON.stringify(config.styles ?? null);
+    if (cardType === this._lastCardType && this._cardElement && stylesKey === this._lastStylesKey) {
       try {
         const isCustom = cardType.startsWith("custom:");
         const { type: _t, ...configWithoutType } = config;
@@ -2599,12 +3239,14 @@ tap_action:
         } else {
           (this._cardElement as any).config = updateConfig;
         }
+        (this._cardElement as any).requestUpdate?.();
         this._cardElement.hass = this.hass;
         return;
       } catch { /* recréer */ }
     }
 
-    // Recréation complète
+    // Recréation complète (type changé ou styles modifiés)
+    this._lastStylesKey = stylesKey;
     this._loading = true;
     frame.innerHTML = "";
     try {
@@ -2687,6 +3329,7 @@ tap_action:
     }
     this._cardElement = undefined;
     this._lastCardType = "";
+    this._lastStylesKey = "";
   }
 
   private _clearFrame(): void {
@@ -2694,6 +3337,7 @@ tap_action:
     if (f) f.innerHTML = "";
     this._cardElement = undefined;
     this._lastCardType = "";
+    this._lastStylesKey = "";
   }
 
   // ── Vérification YAML ─────────────────────────────────────────────────────
@@ -2967,15 +3611,23 @@ tap_action:
     if (!isCardYaml) {
       results.push({ type: 'ok', msg: 'Fichier config HA — vérification syntaxe seulement' });
     } else {
-      // Vérifie tous les type: (racine + cartes imbriquées dans cards/card/badges)
+      // Vérifie tous les type: (racine + cartes imbriquées) — dédupliqué avec comptage
       const allTypes = this._extractCardTypes(config);
       const natives = HaCardPlaygroundEditor._NATIVE_CARD_TYPES;
       const customs = (window as any).customCards as Array<{ type: string }> | undefined;
+      const typeCounts = new Map<string, { count: number; path: string }>();
       for (const { cardType, path } of allTypes) {
-        const label = path ? `"${cardType}" (${path})` : `"${cardType}"`;
+        if (!typeCounts.has(cardType)) typeCounts.set(cardType, { count: 0, path });
+        typeCounts.get(cardType)!.count++;
+      }
+      for (const [cardType, { count, path }] of typeCounts) {
+        const times = count > 1 ? ` ×${count}` : '';
+        const label = path ? `"${cardType}" (${path})${times}` : `"${cardType}"${times}`;
         if (natives.includes(cardType)) {
           results.push({ type: 'ok', msg: `Type ${label} — carte native HA` });
         } else if (cardType.startsWith("custom:") && customs?.some(c => `custom:${c.type}` === cardType)) {
+          results.push({ type: 'ok', msg: `Type ${label} — carte HACS détectée` });
+        } else if (cardType.startsWith("custom:") && customElements.get(cardType.slice(7))) {
           results.push({ type: 'ok', msg: `Type ${label} — carte HACS détectée` });
         } else if (cardType.startsWith("custom:")) {
           results.push({ type: 'warn', msg: `Type ${label} — non trouvé dans les cartes HACS chargées` });
@@ -2993,11 +3645,14 @@ tap_action:
         if (entityIds.length === 0) {
           results.push({ type: 'ok', msg: 'Aucune entité référencée' });
         }
-        for (const id of entityIds) {
+        const entityCounts = new Map<string, number>();
+        for (const id of entityIds) entityCounts.set(id, (entityCounts.get(id) ?? 0) + 1);
+        for (const [id, count] of entityCounts) {
+          const times = count > 1 ? ` ×${count}` : '';
           if (states[id]) {
-            results.push({ type: 'ok', msg: `Entité "${id}" trouvée` });
+            results.push({ type: 'ok', msg: `Entité "${id}"${times} trouvée` });
           } else {
-            results.push({ type: 'error', msg: `Entité "${id}" introuvable dans HA` });
+            results.push({ type: 'error', msg: `Entité "${id}"${times} introuvable dans HA` });
           }
         }
       }
@@ -3005,12 +3660,15 @@ tap_action:
       const services = (this._hass as any)?.services as Record<string, Record<string, unknown>> | undefined;
       if (services) {
         const serviceIds = this._extractServices(config);
-        for (const svc of serviceIds) {
+        const svcCounts = new Map<string, number>();
+        for (const svc of serviceIds) svcCounts.set(svc, (svcCounts.get(svc) ?? 0) + 1);
+        for (const [svc, count] of svcCounts) {
+          const times = count > 1 ? ` ×${count}` : '';
           const [domain, name] = svc.split('.');
           if (services[domain]?.[name]) {
-            results.push({ type: 'ok', msg: `Service "${svc}" trouvé` });
+            results.push({ type: 'ok', msg: `Service "${svc}"${times} trouvé` });
           } else {
-            results.push({ type: 'warn', msg: `Service "${svc}" introuvable` });
+            results.push({ type: 'warn', msg: `Service "${svc}"${times} introuvable` });
           }
         }
       }
@@ -3027,11 +3685,12 @@ tap_action:
     }
     const record = obj as Record<string, unknown>;
     for (const [key, val] of Object.entries(record)) {
-      if ((key === 'entity' || key === 'entity_id') && typeof val === 'string' && val.includes('.')) {
+      if ((key === 'entity' || key === 'entity_id') && typeof val === 'string' && val.includes('.')
+          && !val.includes('[[[') && !val.includes('{{') && !val.includes(' ')) {
         ids.push(val);
       } else if (key === 'entities' && Array.isArray(val)) {
         for (const item of val) {
-          if (typeof item === 'string' && item.includes('.')) ids.push(item);
+          if (typeof item === 'string' && item.includes('.') && !item.includes('[[[') && !item.includes('{{') && !item.includes(' ')) ids.push(item);
           else if (typeof item === 'object') this._extractEntityIds(item, ids);
         }
       } else if (typeof val === 'object') {
@@ -3139,104 +3798,17 @@ tap_action:
     return html`
       <div class="header">
         <h1>Card Playground <span style="font-size:12px;opacity:.55;font-weight:300">v${__VERSION__} · by VDG7</span></h1>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn ${this._previewHidden ? "active" : ""}"
-            title="${this._previewHidden ? "Afficher l'aperçu" : "Masquer l'aperçu"}"
-            @click=${() => { this._previewHidden = !this._previewHidden; }}>
-            ${this._previewHidden ? "▶ Aperçu" : "◀ Plein écran"}
-          </button>
-          <button class="btn ${this._detached ? "active" : ""}" @click=${this._toggleDetach}>
-            ${this._detached ? "↙ Réintégrer" : "↗ Détacher"}
-          </button>
-          <div class="settings-wrap">
-            <button class="btn ${this._settingsOpen ? "active" : ""}"
-              title="Paramètres"
-              @click=${() => { this._settingsOpen = !this._settingsOpen; }}>⚙</button>
-            ${this._settingsOpen ? html`
-              <div class="settings-panel" @click=${(e: Event) => e.stopPropagation()}>
-                <h3>Paramètres</h3>
-                <div class="setting-row setting-row--col">
-                  <div class="setting-label">
-                    Largeur colonne Desktop
-                    <div class="setting-desc">4 col = défaut HA · plus de colonnes = carte plus étroite</div>
-                  </div>
-                  <div class="col-presets">
-                    ${([
-                      {l:"1",w:1200},{l:"2",w:600},{l:"3",w:400},{l:"4",w:300},
-                      {l:"5",w:240},{l:"6",w:200},{l:"8",w:150},{l:"10",w:120}
-                    ] as const).map(p => html`
-                      <button class="col-preset ${this._desktopWidth===p.w?"active":""}"
-                        title="${p.w}px"
-                        @click=${()=>{this._desktopWidth=p.w;}}>${p.l} col</button>`)}
-                  </div>
-                  <div class="setting-slider-row">
-                    <input type="range" min="100" max="1600" step="1"
-                      .value=${String(this._desktopWidth)}
-                      @input=${(e: Event) => { this._desktopWidth = Number((e.target as HTMLInputElement).value); }}>
-                    <input type="number" class="setting-num" min="100" max="1600"
-                      .value=${String(this._desktopWidth)}
-                      @change=${(e: Event) => {
-                        const v = Math.min(1600, Math.max(100, Number((e.target as HTMLInputElement).value)));
-                        this._desktopWidth = v;
-                      }}>
-                  </div>
-                </div>
-                <div class="setting-row">
-                  <div class="setting-label">
-                    Thème clair
-                    <div class="setting-desc">Éditeur et aperçu en mode clair</div>
-                  </div>
-                  <button class="toggle ${!this._darkMode ? "on" : ""}"
-                    @click=${() => { this._darkMode = !this._darkMode; }}></button>
-                </div>
-                <div class="setting-row">
-                  <div class="setting-label">
-                    Sauvegarde automatique
-                    <div class="setting-desc">Restaure le YAML à la réouverture<br>Désactiver si YAML cassé au démarrage</div>
-                  </div>
-                  <button class="toggle ${this._autoSave ? "on" : ""}"
-                    @click=${() => { this._autoSave = !this._autoSave; }}></button>
-                </div>
-                <div class="setting-row">
-                  <div class="setting-label">
-                    Éditeur plein écran au détachement
-                    <div class="setting-desc">Auto : l'éditeur prend toute la largeur<br>dès que l'aperçu est détaché</div>
-                  </div>
-                  <button class="toggle ${this._autoFullOnDetach ? "on" : ""}"
-                    @click=${() => { this._autoFullOnDetach = !this._autoFullOnDetach; }}></button>
-                </div>
-              </div>` : ""}
-          </div>
-        </div>
       </div>
-      <div class="workspace ${this._previewHidden ? "editor-full" : ""} ${this._darkMode ? "" : "light-mode"}"
-        style="--editor-w:${this._splitPct}%;--desktop-w:${this._desktopWidth}px"
-        @click=${() => { if (this._settingsOpen) this._settingsOpen = false; if (this._snippetsOpen) this._snippetsOpen = false; if (this._checkOpen) this._checkOpen = false; }}>
-        <div class="editor-pane">
-          <div class="pane-title" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:4px;padding:6px 12px">
-            <span style="padding-top:2px">Éditeur YAML</span>
-            <div class="font-ctrl">
+      <div class="unified-toolbar"
+        @click=${() => { if (this._settingsOpen) this._settingsOpen = false; if (this._checkOpen) this._checkOpen = false; }}>
+        <span class="toolbar-section-label">Éditeur YAML</span>
+        <div class="font-ctrl">
               <div class="settings-wrap" style="position:relative">
-                <button class="font-btn ${this._snippetsOpen ? "saved" : ""}"
-                  title="Insérer un snippet"
-                  @click=${(e: Event) => { e.stopPropagation(); this._snippetsOpen = !this._snippetsOpen; }}>
-                  📋 Snippets
+                <button class="font-btn ${this._searchOpen ? "saved" : ""}"
+                  title="Rechercher dans le YAML"
+                  @click=${(e: Event) => { e.stopPropagation(); if (this._searchOpen) { this._closeSearch(); } else { this._searchOpen = true; } }}>
+                  🔍 Chercher
                 </button>
-                ${this._snippetsOpen ? html`
-                  <div class="snippets-panel" @click=${(e: Event) => e.stopPropagation()}>
-                    ${(() => {
-                      const groups = [...new Set(HaCardPlaygroundEditor._SNIPPETS.map(s => s.group))];
-                      return groups.map(g => html`
-                        <div class="snippet-group">${g}</div>
-                        ${HaCardPlaygroundEditor._SNIPPETS
-                          .filter(s => s.group === g)
-                          .map(s => html`
-                            <button class="snippet-item" @click=${() => this._insertSnippet(s.yaml)}>
-                              ${s.label}
-                            </button>`)}
-                      `);
-                    })()}
-                  </div>` : ""}
               </div>
               ${this._droppedFileName ? html`
                 <span class="file-badge" title="${this._droppedFileName}">📁 ${this._droppedFileName}</span>
@@ -3302,15 +3874,178 @@ tap_action:
                 @click=${() => { if (this._cmView) indentMore(this._cmView); }}>⇥</button>
               <button class="font-btn" title="Dédenter (−2 espaces)"
                 @click=${() => { if (this._cmView) indentLess(this._cmView); }}>⇤</button>
-              <button class="font-btn"
-                @click=${() => { this._fontSize = Math.max(10, this._fontSize - 1); }}>A−</button>
-              <span class="font-size-label">${this._fontSize}px</span>
-              <button class="font-btn"
-                @click=${() => { this._fontSize = Math.min(28, this._fontSize + 1); }}>A+</button>
-              <button class="font-btn" title="Police par défaut"
-                @click=${() => { this._fontSize = 14; }}>↺</button>
-            </div>
+              <div style="position:relative;display:flex;align-items:center;gap:4px">
+                <button class="font-btn"
+                  @click=${() => { this._fontSize = Math.max(10, this._fontSize - 1); }}>A−</button>
+                <span class="font-size-label">${this._fontSize}px</span>
+                <button class="font-btn"
+                  @click=${() => { this._fontSize = Math.min(28, this._fontSize + 1); }}>A+</button>
+                <button class="font-btn" title="Police par défaut"
+                  @click=${() => { this._fontSize = 14; }}>↺</button>
+                ${this._searchOpen ? html`
+                  <div class="search-popup" @click=${(e: Event) => e.stopPropagation()}>
+                    <div class="search-popup-row">
+                      <input type="text" placeholder="Rechercher…" autofocus
+                        .value=${this._searchLast}
+                        @input=${(e: Event) => {
+                          const val = (e.target as HTMLInputElement).value;
+                          this._searchLast = val;
+                          this._searchSugIdx = -1;
+                          this._searchSuggestions = this._getSearchSuggestions(val);
+                          if (val.length >= 2) this._doSearch(val, true);
+                        }}
+                        @keydown=${(e: KeyboardEvent) => {
+                          e.stopPropagation();
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            if (this._searchSuggestions.length > 0)
+                              this._searchSugIdx = Math.min(this._searchSugIdx + 1, this._searchSuggestions.length - 1);
+                            else this._doSearch(this._searchLast);
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            if (this._searchSuggestions.length > 0)
+                              this._searchSugIdx = Math.max(this._searchSugIdx - 1, -1);
+                            else this._doSearchPrev(this._searchLast);
+                          } else if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (this._searchSugIdx >= 0) {
+                              this._selectSuggestion(this._searchSuggestions[this._searchSugIdx]);
+                            } else {
+                              this._doSearch(this._searchLast);
+                            }
+                          } else if (e.key === 'Escape') {
+                            this._closeSearch();
+                          }
+                        }}
+                      />
+                      <button class="search-nav-btn" title="Occurrence précédente"
+                        @click=${() => this._doSearchPrev(this._searchLast)}>↑</button>
+                      <button class="search-nav-btn" title="Occurrence suivante"
+                        @click=${() => this._doSearch(this._searchLast)}>↓</button>
+                      <button class="search-popup-close" title="Fermer"
+                        @click=${() => { this._closeSearch(); }}>✕</button>
+                    </div>
+                    ${this._searchSuggestions.length > 0 ? html`
+                      <div class="search-sug-list">
+                        ${this._searchSuggestions.map((s, i) => html`
+                          <button class="search-sug-item ${i === this._searchSugIdx ? 'active' : ''}"
+                            @mousedown=${(e: Event) => { e.preventDefault(); this._selectSuggestion(s); }}>
+                            ${s}
+                          </button>`)}
+                      </div>` : ''}
+                  </div>` : ''}
+              </div>
+        </div>
+        <div class="toolbar-sep"></div>
+        <span class="toolbar-section-label">Aperçu</span>
+        <span style="flex-shrink:0;margin:0 8px 0 4px;font-size:13px;font-weight:700;color:var(--primary-text-color)">${this._desktopWidth}px</span>
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+          ${this._showInspectBtn ? html`<button class="zoom-btn ${this._inspectMode ? "active" : ""}"
+            title="${this._inspectMode ? "Mode inspection actif — clic sur la carte pour sauter au YAML" : "Inspecter — clic sur carte → YAML · curseur YAML → surbrillance carte"}"
+            @mousedown=${(e: Event) => e.preventDefault()}
+            @click=${(e: Event) => {
+              e.stopPropagation();
+              const sel = window.getSelection();
+              const selText = sel?.toString().trim() ?? '';
+              if (selText.length >= 2) {
+                sel!.removeAllRanges();
+                this._jumpToYamlMatch([selText]);
+                return;
+              }
+              this._inspectMode = !this._inspectMode;
+              if (!this._inspectMode) this._inspectOverlays = [];
+            }}>🔍</button>` : ''}
+          <button class="zoom-btn" title="Zoom −"
+            @click=${() => { this._previewZoom = Math.max(10, this._previewZoom - 2); }}>−</button>
+          <input type="range" min="10" max="200" step="2"
+            .value=${String(this._previewZoom)}
+            style="width:80px;cursor:pointer;accent-color:var(--primary-color)"
+            @input=${(e: Event) => { this._previewZoom = Number((e.target as HTMLInputElement).value); }}>
+          <span style="font-size:13px;font-weight:700;min-width:38px;text-align:center;color:var(--primary-text-color)">${this._previewZoom}%</span>
+          <button class="zoom-btn" title="Zoom +"
+            @click=${() => { this._previewZoom = Math.min(200, this._previewZoom + 2); }}>+</button>
+          <button class="zoom-btn" title="Réinitialiser zoom"
+            @click=${() => { this._previewZoom = 100; }}>↺</button>
+          <button class="zoom-btn ${this._previewHidden ? "active" : ""}"
+            title="${this._previewHidden ? "Afficher l'aperçu" : "Masquer l'aperçu"}"
+            @click=${() => { this._previewHidden = !this._previewHidden; }}>
+            ${this._previewHidden ? "▶ Aperçu" : "◀ Plein écran"}
+          </button>
+          <button class="zoom-btn ${this._detached ? "active" : ""}" @click=${this._toggleDetach}>
+            ${this._detached ? "↙ Réintégrer" : "↗ Détacher"}
+          </button>
+          <div class="settings-wrap" style="position:relative">
+            <button class="zoom-btn ${this._settingsOpen ? "active" : ""}"
+              title="Paramètres"
+              @click=${(e: Event) => { e.stopPropagation(); this._settingsOpen = !this._settingsOpen; }}>⚙</button>
+            ${this._settingsOpen ? html`
+              <div class="settings-panel" @click=${(e: Event) => e.stopPropagation()}>
+                <h3>Paramètres</h3>
+                <div class="setting-row setting-row--col">
+                  <div class="setting-label">
+                    Largeur colonne Desktop
+                    <div class="setting-desc">4 col = défaut HA · plus de colonnes = carte plus étroite</div>
+                  </div>
+                  <div class="col-presets">
+                    ${([
+                      {l:"1",w:1200},{l:"2",w:600},{l:"3",w:400},{l:"4",w:300},
+                      {l:"5",w:240},{l:"6",w:200},{l:"8",w:150},{l:"10",w:120}
+                    ] as const).map(p => html`
+                      <button class="col-preset ${this._desktopWidth===p.w?"active":""}"
+                        title="${p.w}px"
+                        @click=${()=>{this._desktopWidth=p.w;}}>${p.l} col</button>`)}
+                  </div>
+                  <div class="setting-slider-row">
+                    <input type="range" min="100" max="1600" step="1"
+                      .value=${String(this._desktopWidth)}
+                      @input=${(e: Event) => { this._desktopWidth = Number((e.target as HTMLInputElement).value); }}>
+                    <input type="number" class="setting-num" min="100" max="1600"
+                      .value=${String(this._desktopWidth)}
+                      @change=${(e: Event) => {
+                        const v = Math.min(1600, Math.max(100, Number((e.target as HTMLInputElement).value)));
+                        this._desktopWidth = v;
+                      }}>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-label">
+                    Thème clair
+                    <div class="setting-desc">Éditeur et aperçu en mode clair</div>
+                  </div>
+                  <button class="toggle ${!this._darkMode ? "on" : ""}"
+                    @click=${() => { this._darkMode = !this._darkMode; }}></button>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-label">
+                    Sauvegarde automatique
+                    <div class="setting-desc">Restaure le YAML à la réouverture<br>Désactiver si YAML cassé au démarrage</div>
+                  </div>
+                  <button class="toggle ${this._autoSave ? "on" : ""}"
+                    @click=${() => { this._autoSave = !this._autoSave; }}></button>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-label">
+                    Éditeur plein écran au détachement
+                    <div class="setting-desc">Auto : l'éditeur prend toute la largeur<br>dès que l'aperçu est détaché</div>
+                  </div>
+                  <button class="toggle ${this._autoFullOnDetach ? "on" : ""}"
+                    @click=${() => { this._autoFullOnDetach = !this._autoFullOnDetach; }}></button>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-label">
+                    Bouton inspection 🔍
+                    <div class="setting-desc" style="color:var(--warning-color,#f59e0b);font-weight:500">Bêta — clic carte → YAML</div>
+                  </div>
+                  <button class="toggle ${this._showInspectBtn ? "on" : ""}"
+                    @click=${() => { this._showInspectBtn = !this._showInspectBtn; if (!this._showInspectBtn) { this._inspectMode = false; this._inspectOverlays = []; } }}></button>
+                </div>
+              </div>` : ""}
           </div>
+        </div>
+      </div>
+      <div class="workspace ${this._previewHidden ? "editor-full" : ""} ${this._darkMode ? "" : "light-mode"}"
+        style="--editor-w:${this._splitPct}%;--desktop-w:${this._desktopWidth}px">
+        <div class="editor-pane">
           <div class="editor-area ${this._darkMode ? "" : "light"}" style="--code-font-size:${this._fontSize}px"></div>
         </div>
         <div class="split-handle ${this._dragging ? "dragging" : ""}"
@@ -3324,23 +4059,26 @@ tap_action:
                 <div style="font-size:11px;opacity:.5">Ferme la fenêtre externe</div>
               </button>
             </div>` : html`
-            <div class="preview-toolbar">
-              <div class="pane-title">Aperçu</div>
-              <div class="pane-title toolbar-center">Taille colonne · ${this._desktopWidth}px</div>
-              <div class="toolbar-right"></div>
-            </div>
-            <div class="preview-area">
+            <div class="preview-area" style="${this._inspectMode ? "cursor:crosshair" : ""}">
+              ${this._inspectMode ? html`
+                <div style="position:absolute;inset:0;z-index:200;cursor:crosshair"
+                  @click=${this._onInspectClick}></div>` : ""}
               <div class="preview-col">
-                <div class="preview-frame">
+                <div class="preview-frame" style="zoom:${this._previewZoom/100};position:relative">
                   ${this._parseError
                     ? html`<div class="preview-error">⚠ ${this._parseError}</div>`
                     : this._loading
                     ? html`<div class="preview-loading">Chargement…</div>`
                     : html``}
+                  ${this._inspectOverlays.map(o => html`
+                    <div style="position:absolute;left:${o.left}px;top:${o.top}px;
+                      width:${o.width}px;height:${o.height}px;
+                      outline:2px solid #3b82f6;background:rgba(59,130,246,.15);
+                      pointer-events:none;z-index:100;box-sizing:border-box;border-radius:2px"></div>
+                  `)}
                 </div>
               </div>
             </div>`}
-        </div>
       </div>`;
   }
 }
@@ -3357,6 +4095,7 @@ class HaCardPlaygroundPreview extends LitElement {
   private _channel = new BroadcastChannel(CHANNEL);
   private _cardElement?: HTMLElement & { hass?: HomeAssistant };
   private _lastCardType = "";
+  private _lastStylesKey = "";
   private _hassTimer?: ReturnType<typeof setInterval>;
   private _stateUnsub?: () => void;
 
@@ -3505,8 +4244,9 @@ class HaCardPlaygroundPreview extends LitElement {
 
     const cardType = config.type as string;
 
-    // Mise à jour en place si même type → zéro flickering
-    if (cardType === this._lastCardType && this._cardElement) {
+    // Mise à jour en place si même type ET styles inchangés → zéro flickering
+    const stylesKey = JSON.stringify(config.styles ?? null);
+    if (cardType === this._lastCardType && this._cardElement && stylesKey === this._lastStylesKey) {
       try {
         const isCustom = cardType.startsWith("custom:");
         const { type: _t, ...configWithoutType } = config;
@@ -3516,11 +4256,14 @@ class HaCardPlaygroundPreview extends LitElement {
         } else {
           (this._cardElement as any).config = updateConfig;
         }
+        (this._cardElement as any).requestUpdate?.();
         this._cardElement.hass = this._getHass();
         return;
       } catch { /* recréer */ }
     }
 
+    // Recréation complète (type changé ou styles modifiés)
+    this._lastStylesKey = stylesKey;
     wrap.innerHTML = "";
 
     type AnyCard = HTMLElement & { hass?: HomeAssistant; setConfig?: (c: Record<string, unknown>) => void };
@@ -3592,9 +4335,13 @@ class HaCardPlaygroundPreview extends LitElement {
         <button class="refresh-btn" title="Vue normale"
           @click=${() => { this._zoom = 100; }}>↺</button>
         <div class="zoom-bar">
-          <button @click=${() => { this._zoom = Math.max(25, this._zoom - 25); }}>−</button>
+          <button @click=${() => { this._zoom = Math.max(10, this._zoom - 2); }}>−</button>
+          <input type="range" min="10" max="200" step="2"
+            .value=${String(this._zoom)}
+            style="width:90px;cursor:pointer;accent-color:white"
+            @input=${(e: Event) => { this._zoom = Number((e.target as HTMLInputElement).value); }}>
           <span>${this._zoom}%</span>
-          <button @click=${() => { this._zoom = Math.min(200, this._zoom + 25); }}>+</button>
+          <button @click=${() => { this._zoom = Math.min(200, this._zoom + 2); }}>+</button>
         </div>
       </div>`;
   }

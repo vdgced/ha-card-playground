@@ -69,25 +69,26 @@ Any hex color value in the YAML (`#rgb`, `#rrggbb`, `#rrggbbaa`) renders a small
 
 ---
 
-### 📋 Starter Snippets
+### 🔍 YAML Search
 
-Click **📋 Snippets** in the editor toolbar to open a categorized dropdown of ready-to-use card templates.
+Click **🔍 Chercher** in the editor toolbar to open the search popup, anchored just below the font-size controls (`A−` / `14px` / `A+` / `↺`).
 
-**14 built-in snippets in 5 groups:**
+- **Auto-search** — results appear automatically from 2 characters, occurrence centered in the editor in real time
+- **Navigate occurrences** — `↓` button or `↓` key: next match · `↑` button or `↑` key: previous match · automatic wrap-around
+- **Enter** — confirms a suggestion or jumps to the next occurrence
+- **Escape** or `✕` — closes the popup and clears the highlight
 
-| Group | Snippets |
-|-------|----------|
-| Basique | Entity, Button, Markdown |
-| Visualisation | Gauge, History graph, Statistics graph, Weather forecast |
-| Contrôle | Thermostat, Media player |
-| Mise en page | Vertical stack, Horizontal stack, Grid |
-| Avancé | Glance, Picture entity |
+**Autocomplete suggestions** (priority order):
+1. Entity IDs referenced in the current YAML (same extraction as `✓ Vérifier`)
+2. Card types referenced in the current YAML
+3. Raw words from the YAML text as fallback
 
-**Behavior:**
-- If the editor is **empty** → snippet is inserted directly, no confirmation
-- If the editor has **existing content** → a native `confirm()` dialog appears ("Remplacer le contenu actuel par ce snippet ?") — Cancel keeps the current YAML
-- After insertion, the editor is focused and the preview updates within 400 ms
-- The dropdown closes when clicking outside it (same behavior as the Settings panel)
+**Triple highlight on the found occurrence:**
+- 🔴 **Red bold line number** (via `GutterMarker` + `gutterLineClass`)
+- 🔴 **Red left border** on the full line (`Decoration.line`)
+- 🔴 **Red background on the searched word** (`Decoration.mark`)
+- Automatic vertical centering in the editor
+- Highlight is cleared when the popup closes
 
 ---
 
@@ -449,8 +450,8 @@ panel_custom:
 ## 🚀 Usage
 
 1. Open the **Card Playground** panel from the sidebar
-2. Click **📋 Snippets** to start from a template, or paste / type your card YAML
-3. The preview updates automatically after 400 ms
+2. Paste or type your card YAML — the preview updates automatically after 400 ms
+3. Use **🔍 Chercher** *(Beta)* to search for any text in the YAML, with live highlighting
 4. Click **↗ Détacher** to move the preview to a second screen
 5. Use **💾 Sauver** before making risky edits, then **↩ Restaurer** if something breaks
 6. Use `Ctrl+Space` to trigger autocomplete at any time
@@ -463,7 +464,7 @@ Buttons wrap to a second line on narrow windows (responsive flex layout).
 
 | Button | Action | Feedback |
 |--------|--------|----------|
-| 📋 Snippets | Open snippet dropdown | Highlighted while open |
+| 🔍 Chercher *(Beta)* | Open YAML search popup | Highlighted while open |
 | 📁 `name.yaml` | File mode badge (appears after drag & drop) | — |
 | ⬇ Fichier | Download modified file | Green "✓ Téléchargé" · Red "✗ Erreurs" if errors |
 | 💾 Sauver | Save manual snapshot | Amber "✓ Sauvé" for 1 s |

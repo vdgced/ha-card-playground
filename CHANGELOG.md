@@ -4,6 +4,93 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## En cours — Corrections et améliorations (non releasé)
+
+### 🔍 Chercher — Recherche YAML avec highlight
+
+Remplace le bouton **📋 Snippets** (supprimé entièrement, code inclus).
+
+- **Bouton `🔍 Chercher`** dans la barre éditeur, à la même position que Snippets
+- **Popup de recherche** ancrée sous la zone de taille de police (`A−` / `14px` / `A+` / `↺`)
+- **Recherche automatique** dès 2 caractères tapés — occurrence trouvée et centrée en temps réel
+- **Navigation** : boutons `↑` / `↓` dans le popup + flèches clavier (quand aucune suggestion sélectionnée)
+- **Occurrence suivante** : `↓` ou `Entrée` — **occurrence précédente** : `↑` — wraparound automatique
+- **Autocomplétion** : suggestions issues des `entity_id` et types de carte du YAML courant (même extraction que `✓ Vérifier`), complété par les mots bruts du YAML
+- **Fermeture** : `Échap`, bouton `✕`, ou re-clic sur `🔍 Chercher`
+
+**Surlignage triple de l'occurrence trouvée :**
+- **Numéro de ligne en rouge gras** via `GutterMarker` + `gutterLineClass`
+- **Bordure gauche rouge** sur toute la ligne (`Decoration.line`)
+- **Fond rouge sur le mot** recherché (`Decoration.mark`)
+- Centrage vertical automatique (`EditorView.scrollIntoView` avec `y: 'center'`)
+- Le surlignage disparaît à la fermeture du popup
+
+**Implémentation :** `StateEffect` + `StateField` + `Decoration.mark` / `Decoration.line` + `GutterMarker` — tout défini au niveau module. `_doSearch(text, fromStart?)` / `_doSearchPrev(text)` / `_closeSearch()` / `_getSearchSuggestions(prefix)` / `_selectSuggestion(word)`.
+
+---
+
+### Palette de couleurs — s'ouvrait dans le coin supérieur gauche
+
+- **Bug** : le `<input type="color">` invisible était créé sans dimensions (`width:0;height:0`) et le `.click()` était appelé avant le recalcul du layout → le picker natif s'ancrait à `0,0`
+- **Fix** : `width:1px;height:1px` + `opacity:0.01` + `requestAnimationFrame(() => input.click())` — le layout est calculé avant l'ouverture du picker, qui s'ouvre maintenant au niveau du swatch cliqué
+
+### Zoom aperçu — curseur 10%–200% pas de 2%
+
+- Aperçu inline : curseur `<input range>` + boutons −/+ (pas de 2%) + bouton ↺ reset dans la barre aperçu
+- Fenêtre détachée : même curseur ajouté dans la barre flottante de zoom (remplace les anciens pas de 25%)
+- Appliqué via `zoom` CSS sur `.preview-frame` — le layout recalcule autour de la carte
+
+### Interface — refonte barre toolbar
+
+- **Boutons unifiés** : même gabarit partout (`padding: 5px 14px`, `font-size: 13px`, `border-radius: 6px`) — hauteur identique header / éditeur / aperçu
+- **Header épuré** : uniquement le titre — les boutons action déplacés dans la barre aperçu
+- **Barre aperçu** : `APERÇU` · largeur px · zoom − ▬ + % ↺ · `◀ Plein écran` · `↗ Détacher` · `⚙` avec panneau paramètres intégré
+- **Séparateur colonne** : minimum fixe à 62% — ne peut pas aller plus à gauche, boutons toujours visibles
+- **Palette de couleurs** : s'ouvre maintenant au niveau du swatch cliqué (corrigé `position:fixed` + `requestAnimationFrame`)
+
+### Vérificateur YAML — faux positifs types de cartes HACS
+
+- **Bug** : certaines cartes HACS s'enregistrent via `customElements.define()` sans se déclarer dans `window.customCards` → signalées comme introuvables malgré leur présence dans HA
+- **Fix** : double vérification — `window.customCards` d'abord, puis `customElements.get(tagName)` comme source de vérité réelle (même logique que le rendu dans `_mountCard`)
+
+### Vérificateur YAML — faux positifs templates button-card
+
+- **Bug** : les valeurs `[[[return variables.xxx]]]` dans `entity:` ou `entity_id:` contenaient un `.` → le checker les signalait comme entités introuvables dans HA
+- **Fix** : guards ajoutés dans `_extractEntityIds` — une valeur est ignorée si elle contient `[[[`, `{{` ou un espace (jamais présents dans un vrai entity_id)
+
+### Inspection bidirectionnelle carte ↔ YAML (bouton 🔍)
+
+- **YAML → Carte** : déplacer le curseur sur une ligne avec une valeur (`entity: light.salon`, `name: Mon titre`…) encadre automatiquement en bleu les éléments correspondants dans l'aperçu — traverse récursivement tous les Shadow DOM des custom elements
+- **Carte → YAML** : activer le mode 🔍 (bouton passe en bleu), cliquer sur n'importe quel élément de la carte → le curseur saute directement à la ligne correspondante dans l'éditeur et sélectionne la valeur
+- **Implémentation** : `elementsFromPoint` avec traversal récursif des `shadowRoot` (shadow DOM piercing), `getBoundingClientRect()` pour le positionnement des overlays, overlay `position:absolute` dans `.preview-frame` (coordonnées divisées par le zoom)
+- Fonctionne sur toutes les cartes HA natives et HACS, quelle que soit la profondeur du Shadow DOM
+
+### Vérificateur YAML — déduplication avec comptage (types, entités, services)
+
+- **Bug** : une carte avec 36× `custom:button-card` affichait 36 lignes identiques dans le panel
+- **Fix** : `Map<string, count>` pour types, entités et services — chaque élément unique apparaît **une seule fois** avec `×N` si présent plusieurs fois (ex: `"custom:button-card" ×36 — carte HACS détectée`)
+- Appliqué sur les 3 sections : types de cartes, entités HA, services HA
+
+### Interface — barre de contrôles unifiée (unified toolbar)
+
+- **Architecture** : tous les boutons (éditeur YAML + contrôles aperçu) sont regroupés dans une **unique barre pleine largeur** (`unified-toolbar`) placée au-dessus du split
+- Le workspace en dessous ne contient plus que les zones de contenu pures : éditeur CodeMirror à gauche, aperçu carte à droite
+- **Résultat** : tirer le séparateur de colonne n'affecte jamais les boutons — seuls le code et l'aperçu bougent
+- Séparateur visuel (`toolbar-sep`) entre la section éditeur et la section aperçu
+- La section aperçu (zoom, ◀ Plein écran, ↗ Détacher, ⚙) est toujours visible à droite, même quand l'aperçu est masqué
+
+### Bouton "Plein écran" — impossible de revenir à l'aperçu splitté
+
+- **Bug** : cliquer "◀ Plein écran" masquait la `.preview-pane` entière, emportant avec elle le bouton "▶ Aperçu" — pas moyen de restaurer le split
+- **Fix** : le bouton "▶ Aperçu" apparaît directement dans la toolbar **éditeur** (en couleur primary) quand le plein écran est actif — l'éditeur ne disparaissant jamais, le bouton reste toujours accessible
+
+### Aperçu temps réel — `styles:` ne se mettait pas à jour
+
+- **Bug** : modifier `styles:` (ex. `grid-template-areas`) ne recréait pas l'aperçu — button-card mémoïse ses styles compilés, `setConfig` seul ne forçait pas la recompilation
+- **Fix** : comparaison `JSON.stringify(config.styles)` entre deux renders (`_lastStylesKey`) — si `styles` change → recréation complète de l'élément ; sinon → fast path `setConfig` conservé (pas de flickering pour les changements d'entité, variables, etc.)
+
+---
+
 ## v0.7.91 — Glisser-déposer fichier + vérificateur YAML + toolbar responsive
 
 ### Glisser-déposer fichier YAML

@@ -1,7 +1,8 @@
 {
-  "HA_URL":      "http://192.168.X.X:8123",
-  "HA_TOKEN":    "VOTRE_TOKEN_LONGUE_DUREE_ICI",
-  "HA_CONFIG":   "//192.168.X.X/config/configuration.yaml",
-  "HA_WWW_DEST": "//192.168.X.X/config/www/ha-card-playground.js",
-  "DEV_URL":     "http://192.168.X.X:5500/ha-card-playground.js"
+  "HA_URL":           "http://192.168.X.X:8123",
+  "HA_TOKEN":         "VOTRE_TOKEN_LONGUE_DUREE_ICI",
+  "HA_CONFIG":        "//192.168.X.X/config/configuration.yaml",
+  "HA_WWW_DEST":      "//192.168.X.X/config/www/ha-card-playground.js",
+  "HA_WWW_HACS_DEST": "//192.168.X.X/config/www/community/ha-card-playground/ha-card-playground.js",
+  "DEV_URL":          "http://192.168.X.X:5500/ha-card-playground.js"
 }
