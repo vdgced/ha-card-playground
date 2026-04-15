@@ -4,7 +4,7 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
-## En cours — Corrections et améliorations (non releasé)
+## v0.7.93 — Recherche YAML, inspection bidirectionnelle, unified toolbar, zoom curseur
 
 ### 🔍 Chercher — Recherche YAML avec highlight
 
