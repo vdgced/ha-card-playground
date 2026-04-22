@@ -1,6 +1,6 @@
 # HA Card Playground — by VDG7
 
-**v0.7.93 · Prévisualisez vos cartes Home Assistant en temps réel — même sur un second écran**
+**v0.7.94 · Prévisualisez vos cartes Home Assistant en temps réel — même sur un second écran**
 
 ---
 
@@ -156,6 +156,13 @@ Tous les **services disponibles dans votre HA en direct** — lus depuis `hass.s
 **Sur une ligne `icon:`** :
 
 La **totalité de la bibliothèque MDI — 7447 icônes** — toutes les icônes disponibles dans HA. Chaque suggestion affiche un **vrai aperçu SVG** via `<ha-icon>`. Tapez `mdi:light` ou juste `light`. Fonctionne aussi dans les attributs HTML Lovelace (`icon="mdi:..."`).
+
+**Pour `custom:ha-canvas-card`** :
+
+Schéma complet pour cette carte de positionnement libre en pixels :
+- Clés racine : `background`, `height`, `cards`
+- Dans un item de la liste `cards:` : `x`, `y`, `w`, `h`, `right`, `bottom`, `z`, `opacity`, `card` — avec descriptions de positionnement
+- Le preview applique automatiquement une hauteur fixe (700 px par défaut) pour éviter l'effondrement à 0 px dû au `height: 100%`
 
 **Sur une ligne `attribute:` ou `state_attribute:`** :
 

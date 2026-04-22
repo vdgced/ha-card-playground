@@ -1,6 +1,6 @@
 # HA Card Playground — by VDG7
 
-**v0.7.93 · Live card preview with detachable window**
+**v0.7.94 · Live card preview with detachable window**
 
 > The native Home Assistant card editor hides the preview when you expand the code area. **HA Card Playground** solves this by giving you a dedicated panel with a full YAML editor and a real-time card preview — side by side, or detached on a second screen.
 
@@ -176,7 +176,11 @@ Triggered at the start of a line (key position — only spaces or `- ` before th
 - Detects the card type by scanning **backwards** from the cursor, stopping at the first `type:` line with indentation ≤ cursor — correctly handles nested stacks
 - **Auto-triggers on Enter** after a `type:` line — the key list opens immediately without needing `Ctrl+Space`
 - Suggests all relevant keys for the detected card type with their type hint in the detail column (e.g. `entity_id — requis`, `boolean`, `object`)
-- 24 card types covered with specific key sets
+- 25 card types covered with specific key sets
+
+**`custom:ha-canvas-card` support** — full schema for this free-positioning card:
+- Root keys: `background`, `height`, `cards`
+- Inside a `cards:` list item: `x`, `y`, `w`, `h`, `right`, `bottom`, `z`, `opacity`, `card` — with positioning descriptions
 
 **Inside a `tap_action:` / `hold_action:` / `double_tap_action:` block:**
 - Detected via `_getActionBlockAtCursor` — scans backwards to the nearest parent block
