@@ -4,6 +4,14 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.7.95 — Fix hauteur canvas card (timing DOM)
+
+### Preview — correction du timing de hauteur
+
+La hauteur du frame était appliquée via le système réactif Lit (`@state`) — asynchrone. La carte canvas était donc déjà montée et avait calculé son `height: 100%` à 0 px avant que le frame reçoive sa hauteur. La hauteur est maintenant appliquée directement sur l'élément DOM (`frame.style.height`) avant le montage de la carte, dans les deux modes (inline et fenêtre détachée).
+
+---
+
 ## v0.7.94 — Support natif `custom:ha-canvas-card`
 
 ### Autocomplete — clés de positionnement canvas

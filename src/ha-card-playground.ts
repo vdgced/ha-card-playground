@@ -3260,12 +3260,16 @@ content: |
 
     const cardType = config.type as string;
 
-    // Canvas card : hauteur 100% collapse sans parent fixe → forcer une hauteur sur le frame
+    // Canvas card : hauteur 100% collapse sans parent fixe → forcer la hauteur immédiatement
+    // sur le DOM (pas via @state Lit qui est asynchrone — la carte serait déjà montée avant)
     if (cardType === "custom:ha-canvas-card") {
       const cfgH = config.height as string | undefined;
-      this._canvasHeight = cfgH && !cfgH.includes('%') ? cfgH : "700px";
+      const h = cfgH && !cfgH.includes('%') ? cfgH : "700px";
+      this._canvasHeight = h;
+      frame.style.height = h;
     } else {
       this._canvasHeight = null;
+      frame.style.height = "";
     }
 
     // Mise à jour en place si même type ET styles inchangés → zéro flickering
@@ -4286,12 +4290,15 @@ class HaCardPlaygroundPreview extends LitElement {
 
     const cardType = config.type as string;
 
-    // Canvas card : forcer une hauteur sur le wrap pour éviter le collapse à 0px
+    // Canvas card : forcer la hauteur immédiatement sur le DOM (pas via @state Lit — asynchrone)
     if (cardType === "custom:ha-canvas-card") {
       const cfgH = config.height as string | undefined;
-      this._canvasHeight = cfgH && !cfgH.includes('%') ? cfgH : "700px";
+      const h = cfgH && !cfgH.includes('%') ? cfgH : "700px";
+      this._canvasHeight = h;
+      wrap.style.height = h;
     } else {
       this._canvasHeight = null;
+      wrap.style.height = "";
     }
 
     // Mise à jour en place si même type ET styles inchangés → zéro flickering
