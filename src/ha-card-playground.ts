@@ -3273,8 +3273,10 @@ content: |
     }
 
     // Mise à jour en place si même type ET styles inchangés → zéro flickering
+    // Exception : ha-canvas-card re-construit ses enfants dans _setup() → toujours re-créer
     const stylesKey = JSON.stringify(config.styles ?? null);
-    if (cardType === this._lastCardType && this._cardElement && stylesKey === this._lastStylesKey) {
+    const canForceUpdate = cardType !== "custom:ha-canvas-card";
+    if (canForceUpdate && cardType === this._lastCardType && this._cardElement && stylesKey === this._lastStylesKey) {
       try {
         const isCustom = cardType.startsWith("custom:");
         const { type: _t, ...configWithoutType } = config;
@@ -4302,8 +4304,10 @@ class HaCardPlaygroundPreview extends LitElement {
     }
 
     // Mise à jour en place si même type ET styles inchangés → zéro flickering
+    // Exception : ha-canvas-card re-construit ses enfants dans _setup() → toujours re-créer
     const stylesKey = JSON.stringify(config.styles ?? null);
-    if (cardType === this._lastCardType && this._cardElement && stylesKey === this._lastStylesKey) {
+    const canForceUpdate = cardType !== "custom:ha-canvas-card";
+    if (canForceUpdate && cardType === this._lastCardType && this._cardElement && stylesKey === this._lastStylesKey) {
       try {
         const isCustom = cardType.startsWith("custom:");
         const { type: _t, ...configWithoutType } = config;

@@ -4,6 +4,16 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.7.96 — Fix aperçu live canvas card (re-création forcée)
+
+### Preview — re-création complète pour `custom:ha-canvas-card`
+
+Le playground utilise une optimisation "update-in-place" pour les cartes : il appelle `setConfig` sur l'élément existant plutôt que de le re-créer, évitant le scintillement. Mais `ha-canvas-card` construit ses enfants dans `_setup()` (appelé une seule fois à la connexion) — un `setConfig` ultérieur ne repositionne donc pas les sous-cartes.
+
+Le playground détecte maintenant `custom:ha-canvas-card` et force une re-création complète à chaque modification du YAML, dans les deux modes (inline et fenêtre détachée). Changer `x`, `y`, `w`, `h`, `right`, `bottom`, `z` ou `opacity` met immédiatement à jour l'aperçu.
+
+---
+
 ## v0.7.95 — Fix hauteur canvas card (timing DOM)
 
 ### Preview — correction du timing de hauteur
