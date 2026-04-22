@@ -2,6 +2,10 @@
 
 **v0.7.95 · Prévisualisez vos cartes Home Assistant en temps réel — même sur un second écran**
 
+![Vue principale — éditeur + aperçu en direct côte à côte](screenshots/main-view.png)
+
+![Fenêtre détachée — aperçu sur un second écran](screenshots/detached-window-zoomed.png)
+
 ---
 
 Vous avez déjà passé du temps à peaufiner une carte dans Home Assistant, pour réaliser qu'agrandir la zone d'édition fait disparaître l'aperçu ? Vous travaillez "à l'aveugle", sans savoir à quoi ressemble votre carte avant de sauvegarder ?

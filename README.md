@@ -2,6 +2,10 @@
 
 **v0.7.95 · Live card preview with detachable window**
 
+![Main view — editor + live preview side by side](screenshots/main-view.png)
+
+![Detached window — preview on a second screen](screenshots/detached-window-zoomed.png)
+
 > The native Home Assistant card editor hides the preview when you expand the code area. **HA Card Playground** solves this by giving you a dedicated panel with a full YAML editor and a real-time card preview — side by side, or detached on a second screen.
 
 ---
