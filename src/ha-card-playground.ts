@@ -372,6 +372,7 @@ content: |
   @state() private _searchSugIdx = -1;
   private _searchLast = '';
   @state() private _desktopWidth = 300;         // largeur colonne desktop (px) — 4 col HA par défaut
+  @state() private _canvasHeight: string | null = null; // hauteur forcée quand type canvas
   @state() private _checkOpen = false;
   @state() private _checkResult: Array<{ type: 'ok' | 'error' | 'warn'; msg: string }> | null = null;
   @state() private _fileSaved = false;
@@ -1105,6 +1106,13 @@ content: |
     ],
     // ── Custom cards HACS ───────────────────────────────────────────────────
 
+    // ── ha-canvas-card ───────────────────────────────────────────────────
+    "custom:ha-canvas-card": [
+      { label: "background",  detail: "couleur CSS (ex: #0a0a1a)" },
+      { label: "height",      detail: "string (ex: 100%, 800px)" },
+      { label: "cards",       detail: "list — sous-cartes positionnées" },
+    ],
+
     // ── bubble-card ──────────────────────────────────────────────────────
     "custom:bubble-card": [
       { label: "card_type",           detail: "button | separator | empty-column | cover | media-player | select | pop-up | horizontal-buttons-stack — requis" },
@@ -1641,6 +1649,31 @@ content: |
           apply: HaCardPlaygroundEditor._BLOCK_KEYS.has(k.label) ? k.label + ':' : k.label + ': ',
         }));
       return rowKeys.length ? { from: fromPos, options: rowKeys, validFor: /[\w-]*/ } : null;
+    }
+
+    // Priorité 2d : dans un item de cards: d'une ha-canvas-card → clés de positionnement
+    const cardsParent = this._getParentBlockKey(ctx.state, ctx.pos, ['cards']);
+    if (cardsParent === 'cards') {
+      const rootType = this._getCardTypeAtCursor(ctx.state, ctx.pos);
+      if (rootType === 'custom:ha-canvas-card') {
+        const canvasItemKeys = [
+          { label: 'x',       detail: 'number | string — position gauche (pixels ou %)' },
+          { label: 'y',       detail: 'number | string — position haut (pixels ou %)' },
+          { label: 'w',       detail: 'number | string — largeur (pixels ou %)' },
+          { label: 'h',       detail: 'number | string — hauteur (pixels ou %)' },
+          { label: 'right',   detail: 'number | string — ancrage bord droit' },
+          { label: 'bottom',  detail: 'number | string — ancrage bord bas' },
+          { label: 'z',       detail: 'number — z-index' },
+          { label: 'opacity', detail: 'number (0–1)' },
+          { label: 'card',    detail: 'object — carte HA imbriquée' },
+        ]
+          .filter(k => typed.length === 0 || k.label.includes(typed))
+          .map(k => ({
+            ...k, type: "variable" as const,
+            apply: HaCardPlaygroundEditor._BLOCK_KEYS.has(k.label) ? k.label + ':' : k.label + ': ',
+          }));
+        if (canvasItemKeys.length) return { from: fromPos, options: canvasItemKeys, validFor: /[\w-]*/ };
+      }
     }
 
     // Priorité 3 : clés selon le type de carte
@@ -3227,6 +3260,14 @@ content: |
 
     const cardType = config.type as string;
 
+    // Canvas card : hauteur 100% collapse sans parent fixe → forcer une hauteur sur le frame
+    if (cardType === "custom:ha-canvas-card") {
+      const cfgH = config.height as string | undefined;
+      this._canvasHeight = cfgH && !cfgH.includes('%') ? cfgH : "700px";
+    } else {
+      this._canvasHeight = null;
+    }
+
     // Mise à jour en place si même type ET styles inchangés → zéro flickering
     const stylesKey = JSON.stringify(config.styles ?? null);
     if (cardType === this._lastCardType && this._cardElement && stylesKey === this._lastStylesKey) {
@@ -4064,7 +4105,7 @@ content: |
                 <div style="position:absolute;inset:0;z-index:200;cursor:crosshair"
                   @click=${this._onInspectClick}></div>` : ""}
               <div class="preview-col">
-                <div class="preview-frame" style="zoom:${this._previewZoom/100};position:relative">
+                <div class="preview-frame" style="zoom:${this._previewZoom/100};position:relative${this._canvasHeight ? `;height:${this._canvasHeight}` : ''}">
                   ${this._parseError
                     ? html`<div class="preview-error">⚠ ${this._parseError}</div>`
                     : this._loading
@@ -4102,6 +4143,7 @@ class HaCardPlaygroundPreview extends LitElement {
   @state() private _error: string | null = null;
   @state() private _zoom = 100;
   @state() private _desktopWidth = 300;
+  @state() private _canvasHeight: string | null = null;
 
   static styles = css`
     :host {
@@ -4244,6 +4286,14 @@ class HaCardPlaygroundPreview extends LitElement {
 
     const cardType = config.type as string;
 
+    // Canvas card : forcer une hauteur sur le wrap pour éviter le collapse à 0px
+    if (cardType === "custom:ha-canvas-card") {
+      const cfgH = config.height as string | undefined;
+      this._canvasHeight = cfgH && !cfgH.includes('%') ? cfgH : "700px";
+    } else {
+      this._canvasHeight = null;
+    }
+
     // Mise à jour en place si même type ET styles inchangés → zéro flickering
     const stylesKey = JSON.stringify(config.styles ?? null);
     if (cardType === this._lastCardType && this._cardElement && stylesKey === this._lastStylesKey) {
@@ -4325,7 +4375,7 @@ class HaCardPlaygroundPreview extends LitElement {
 
   render() {
     return html`
-      <div class="wrap" style="zoom:${this._zoom / 100};max-width:${this._desktopWidth}px">
+      <div class="wrap" style="zoom:${this._zoom / 100};max-width:${this._desktopWidth}px${this._canvasHeight ? `;height:${this._canvasHeight}` : ''}">
         ${this._error
           ? html`<div class="error">⚠ ${this._error}</div>`
           : html`<div class="waiting">En attente du YAML…</div>`}

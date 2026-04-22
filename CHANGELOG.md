@@ -4,6 +4,21 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.7.94 — Support natif `custom:ha-canvas-card`
+
+### Autocomplete — clés de positionnement canvas
+
+Ajout du schéma complet pour `custom:ha-canvas-card` dans l'autocomplétion :
+
+- **Clés racine** : `background`, `height`, `cards`
+- **Clés d'item** dans la liste `cards:` : `x`, `y`, `w`, `h`, `right`, `bottom`, `z`, `opacity`, `card` — avec descriptions détaillées
+
+### Preview — hauteur automatique
+
+La `custom:ha-canvas-card` utilise `height: 100%` qui s'effondrait à 0 px dans le frame de preview (pas de parent avec hauteur définie). Le playground détecte maintenant ce type de carte et applique automatiquement une hauteur fixe (700 px par défaut, ou la valeur `height:` du YAML si elle est en pixels) — tant dans l'aperçu inline que dans la fenêtre détachée.
+
+---
+
 ## v0.7.93 — Recherche YAML, inspection bidirectionnelle, unified toolbar, zoom curseur
 
 ### Interface — avant / après
