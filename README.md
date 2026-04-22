@@ -1,6 +1,6 @@
 # HA Card Playground — by VDG7
 
-**v0.7.96 · Live card preview with detachable window**
+**v0.7.97 · Live card preview with detachable window**
 
 ![Main view — editor + live preview side by side](screenshots/main-view.png)
 
@@ -330,11 +330,15 @@ Plus a **pixel-precise slider** (100–1600 px) and a **direct numeric input** f
 - **BroadcastChannel API** (`card-playground` channel) syncs YAML and settings between windows in real time
 - On open, the detached window sends a `request-yaml` message and the editor replies immediately with the current YAML
 
-#### Zoom controls (detached window)
+#### Zoom controls (both views)
 
-Fixed bar in the bottom-right corner of the detached window:
+**Mouse wheel zoom** — scroll the mouse wheel directly over the preview to zoom in/out (no modifier key needed):
+- **Inline preview** — wheel over the preview area
+- **Detached window** — wheel anywhere in the window
+
+Fixed bar in the bottom-right corner of the detached window (also in the preview toolbar for the inline view):
 - `↺` — reset zoom to 100%
-- `−` / `+` — decrease / increase zoom in 25% steps (range: 25%–200%)
+- `−` / `+` — decrease / increase zoom in 2% steps (range: 10%–200%)
 - Current zoom percentage displayed between the buttons
 - Uses CSS `zoom` property (not `transform: scale`) — scroll behavior remains natural at any zoom level
 - When zoom ≠ 100%, a badge **"Aperçu · taille non contractuelle"** appears below the card (15 px, 45% opacity) as a reminder that the displayed size is not the real card size

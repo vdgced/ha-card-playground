@@ -1,6 +1,6 @@
 # HA Card Playground — by VDG7
 
-**v0.7.96 · Prévisualisez vos cartes Home Assistant en temps réel — même sur un second écran**
+**v0.7.97 · Prévisualisez vos cartes Home Assistant en temps réel — même sur un second écran**
 
 ![Vue principale — éditeur + aperçu en direct côte à côte](screenshots/main-view.png)
 
@@ -68,10 +68,14 @@ Ou utilisez le curseur pour régler pixel par pixel (100–1600 px), ou tapez di
 
 Cliquez sur **↗ Détacher** — l'aperçu s'ouvre dans une nouvelle fenêtre (540×760 px) que vous placez sur votre second écran. La fenêtre détachée charge le frontend complet de Home Assistant, exactement comme votre tableau de bord. Continuez à éditer sur le premier écran — la carte se met à jour en temps réel grâce à l'API BroadcastChannel.
 
-**Zoom dans la fenêtre détachée :**
+**Zoom à la molette :**
 
-Une barre fixe en bas à droite vous permet de zoomer :
-- `−` / `+` pour diminuer ou augmenter le zoom par pas de 25% (plage 25%–200%)
+Faites tourner la molette directement sur l'aperçu pour zoomer/dézoomer, sans maintenir de touche :
+- **Aperçu intégré** : molette sur la zone de preview
+- **Fenêtre détachée** : molette n'importe où dans la fenêtre
+
+**Contrôles de zoom (barre fixe en bas à droite) :**
+- `−` / `+` pour diminuer ou augmenter le zoom par pas de 2% (plage 10%–200%)
 - `↺` pour revenir à 100%
 - Le zoom utilise la propriété CSS `zoom` (et non `transform: scale`) pour que le scroll reste naturel quelle que soit la taille
 - Quand le zoom est différent de 100%, un badge **"Aperçu · taille non contractuelle"** s'affiche sous la carte pour rappeler que la taille affichée n'est pas la vraie taille de la carte

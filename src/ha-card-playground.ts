@@ -479,7 +479,7 @@ content: |
     .toolbar-right { flex: 1; }
     .preview-area {
       flex: 1; overflow: auto; padding: 24px;
-      display: flex; align-items: flex-start; justify-content: center;
+      display: flex; align-items: flex-start;
       background: var(--primary-background-color, #111827); transition: background .2s;
       position: relative;
     }
@@ -495,7 +495,7 @@ content: |
     .zoom-btn:hover { background: var(--primary-color); color: white; border-color: var(--primary-color); }
     .zoom-btn.active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
     .zoom-label { font-size: 13px; font-weight: 700; opacity: .9; min-width: 48px; text-align: center; }
-    .preview-col { display: flex; flex-direction: column; align-items: stretch; }
+    .preview-col { display: flex; flex-direction: column; align-items: stretch; margin: 0 auto; }
     .preview-badge {
       font-size: 15px; text-align: center; padding: 6px 0 0;
       opacity: .45; letter-spacing: .04em; user-select: none;
@@ -662,6 +662,9 @@ content: |
     await this._loadLovelaceResources(); // charge button-card, card-mod, etc.
     this._scheduleRender();
     this._scheduleCheck();
+    await this.updateComplete;
+    const previewArea = this.renderRoot.querySelector('.preview-area') as HTMLElement | null;
+    previewArea?.addEventListener('wheel', this._onPreviewWheel, { passive: false });
   }
 
   /**
@@ -3841,6 +3844,12 @@ content: |
     this._scheduleRender();
   }
 
+  private _onPreviewWheel = (e: WheelEvent): void => {
+    e.preventDefault();
+    const step = e.deltaY < 0 ? 5 : -5;
+    this._previewZoom = Math.min(200, Math.max(10, this._previewZoom + step));
+  };
+
   render() {
     return html`
       <div class="header">
@@ -4153,11 +4162,11 @@ class HaCardPlaygroundPreview extends LitElement {
 
   static styles = css`
     :host {
-      display: flex; align-items: center; justify-content: center;
+      display: flex; align-items: flex-start; justify-content: center;
       min-height: 100vh; padding: 24px; box-sizing: border-box;
       background: var(--primary-background-color, #111827);
     }
-    .wrap { width: 100%; max-width: 540px; }
+    .wrap { width: 100%; max-width: 540px; --ha-card-border-width: 0px; margin-top: auto; margin-bottom: auto; }
     .error {
       padding: 16px; background: #ef4444; color: white;
       border-radius: 8px; font-size: 13px; font-family: monospace;
@@ -4195,6 +4204,12 @@ class HaCardPlaygroundPreview extends LitElement {
   `;
 
   protected async firstUpdated(): Promise<void> {
+    this.addEventListener('wheel', (e: WheelEvent) => {
+      e.preventDefault();
+      const step = e.deltaY < 0 ? 5 : -5;
+      this._zoom = Math.min(200, Math.max(10, this._zoom + step));
+    }, { passive: false });
+
     try {
       this._helpers = await window.loadCardHelpers();
     } catch {

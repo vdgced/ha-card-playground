@@ -4,6 +4,26 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.7.97 — Zoom molette + fix scroll + fix bordures détaché
+
+### Preview — zoom à la molette
+
+La molette de la souris zoome directement l'aperçu, dans les deux modes :
+- **Aperçu intégré** : molette sur la zone de preview → zoom (10–200 %)
+- **Fenêtre détachée** : molette n'importe où dans la fenêtre → zoom (10–200 %)
+
+Implémenté via `addEventListener('wheel', …, { passive: false })` dans `firstUpdated` pour que `preventDefault()` bloque correctement le scroll navigateur.
+
+### Preview — scroll complet de la carte
+
+Suppression du `justify-content: center` sur `.preview-area` qui bloquait le scroll horizontal quand la carte débordait après zoom. Le centrage est maintenant géré par `margin: auto` sur `.preview-col`.
+
+### Fenêtre détachée — suppression des bordures parasites
+
+La fenêtre détachée héritait des variables CSS du thème HA (`--ha-card-border-width`), faisant apparaître des bordures absentes dans l'aperçu intégré. Ajout de `--ha-card-border-width: 0px` sur `.wrap` pour uniformiser les deux vues.
+
+---
+
 ## v0.7.96 — Fix aperçu live canvas card (re-création forcée)
 
 ### Preview — re-création complète pour `custom:ha-canvas-card`
