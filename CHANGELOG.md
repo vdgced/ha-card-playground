@@ -4,6 +4,22 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.7.98 — Support button_card_templates + fix faux positif `template:`
+
+### Fix — button_card_templates disponibles dans l'aperçu
+
+Les cartes `custom:button-card` utilisant `template:` échouaient dans le playground avec une erreur "template is missing", alors qu'elles fonctionnent normalement dans un dashboard HA.
+
+**Cause** : button-card résout ses templates via une traversée DOM (`jn()`) qui cherche `hui-root.lovelace.config.button_card_templates`. Dans le playground (un panel custom), `ha-panel-lovelace` n'est pas dans le DOM — `jn()` retournait `null`.
+
+**Fix** : au chargement, le playground récupère les `button_card_templates` depuis `lovelace/config` (WebSocket HA), puis installe un hook DOM persistant qui intercepte `querySelector("ha-panel-lovelace")` sur le panel resolver. button-card trouve ainsi ses templates quelle que soit la profondeur de la carte (button-card direct, ou créé en interne par canvas-card, auto-entities, etc.).
+
+### Fix — faux positif `"template:" clé HA racine mal indentée`
+
+La clé `template:` était dans la liste `_HA_ROOT_KEYS` du validateur. Elle était donc signalée comme "clé HA racine mal indentée" lorsqu'elle apparaissait dans un bloc `custom:button-card`. Retirée de cette liste — `template:` est une clé valide de button-card, pas une clé de configuration HA.
+
+---
+
 ## v0.7.97 — Zoom molette + fix scroll + fix bordures détaché
 
 ### Preview — zoom à la molette

@@ -50,6 +50,43 @@ type Msg =
 
 const IS_PREVIEW = window.location.hash === "#preview";
 
+/**
+ * button-card résout ses templates via jn() qui traverse le DOM pour trouver
+ * hui-root.lovelace.config.button_card_templates. Dans le playground, ha-panel-lovelace
+ * n'est pas dans le DOM (on est sur un panel custom). On patch temporairement querySelector
+ * sur le partial-panel-resolver pour que jn() trouve un faux hui-root avec les templates.
+ * Le patch est actif uniquement pendant l'appel setConfig.
+ */
+function installButtonCardTemplateHook(templates: Record<string, unknown>): () => void {
+  try {
+    const ha = document.querySelector("home-assistant") as any;
+    const main = ha?.shadowRoot?.querySelector("home-assistant-main") as any;
+    const resolver = main?.shadowRoot?.querySelector(
+      "app-drawer-layout partial-panel-resolver, ha-drawer partial-panel-resolver"
+    ) as any;
+    if (!resolver) return () => {};
+
+    const target: any = resolver.shadowRoot ?? resolver;
+    if (!target) return () => {};
+
+    const fakeHuiRoot = {
+      lovelace: { config: { button_card_templates: templates }, current_view: 0 },
+      _curView: 0,
+    };
+    const fakePanelLovelace = {
+      shadowRoot: { querySelector: (sel: string) => sel === "hui-root" ? fakeHuiRoot : null },
+    };
+
+    const originalQS = target.querySelector.bind(target);
+    target.querySelector = (sel: string) =>
+      sel === "ha-panel-lovelace" ? fakePanelLovelace : originalQS(sel);
+
+    return () => { delete target.querySelector; };
+  } catch {
+    return () => {};
+  }
+}
+
 // HighlightStyle.define() mappe directement les tags Lezer aux couleurs
 // Plus fiable que classHighlighter dans le contexte Shadow DOM de HA
 
@@ -344,6 +381,8 @@ content: |
   private _highlightTimer?: ReturnType<typeof setTimeout>;
   private _lastHighlightValue = "";
   private _helpers?: CardHelpers;
+  private _lovelaceTemplates: Record<string, unknown> = {};
+  private _lovelaceHookCleanup?: () => void;
   private _channel = new BroadcastChannel(CHANNEL);
   private _previewWin?: WindowProxy | null;
   private _winWatcher?: ReturnType<typeof setInterval>;
@@ -692,6 +731,18 @@ content: |
             document.head.appendChild(s);
           }))
       );
+
+      // Charger les button_card_templates depuis la config Lovelace brute
+      try {
+        const llConfig = await conn.sendMessagePromise({ type: "lovelace/config", force: false }) as Record<string, unknown>;
+        this._lovelaceTemplates = (llConfig?.button_card_templates as Record<string, unknown>) ?? {};
+        // Hook persistant : actif tant que le composant est dans le DOM
+        // Nécessaire pour les cartes qui créent des button-card en interne (ex: ha-canvas-card)
+        this._lovelaceHookCleanup?.();
+        this._lovelaceHookCleanup = installButtonCardTemplateHook(this._lovelaceTemplates);
+      } catch (e) {
+        console.warn("[Card Playground] lovelace/config échoué:", e);
+      }
     } catch (err) {
       console.warn("[Card Playground] Ressources Lovelace non chargées:", err);
     }
@@ -736,6 +787,7 @@ content: |
     this._channel.close();
     clearTimeout(this._debounceTimer);
     clearInterval(this._winWatcher);
+    this._lovelaceHookCleanup?.();
   }
 
   private _onDividerDown = (e: MouseEvent): void => {
@@ -3341,6 +3393,7 @@ content: |
         await Promise.resolve();
         return;
       } catch (err) {
+        console.warn("[Card Playground] setConfig error:", err);
         this._showErrorCard(frame, err, config);
         return;
       }
@@ -3403,7 +3456,7 @@ content: |
     'weather','energy','utility_meter','schedule','tag','plant','mqtt',
     'zwave_js','modbus','rfxtrx','knx','zha','ring','nest','hue','sonos',
     'cast','plex','esphome','python_script','shell_command','rest_command',
-    'template','panel_custom','panel_iframe','lovelace','cloud','mobile_app',
+    'panel_custom','panel_iframe','lovelace','cloud','mobile_app',
     'system_health','map','config','hassio','onboarding','updater',
   ]);
 
@@ -4152,6 +4205,8 @@ class HaCardPlaygroundPreview extends LitElement {
   private _cardElement?: HTMLElement & { hass?: HomeAssistant };
   private _lastCardType = "";
   private _lastStylesKey = "";
+  private _lovelaceTemplates: Record<string, unknown> = {};
+  private _lovelaceHookCleanup?: () => void;
   private _hassTimer?: ReturnType<typeof setInterval>;
   private _stateUnsub?: () => void;
 
@@ -4237,6 +4292,14 @@ class HaCardPlaygroundPreview extends LitElement {
               document.head.appendChild(s);
             }))
         );
+
+        // Charger les button_card_templates depuis la config Lovelace brute
+        try {
+          const llConfig = await conn.sendMessagePromise({ type: "lovelace/config", force: false }) as Record<string, unknown>;
+          this._lovelaceTemplates = (llConfig?.button_card_templates as Record<string, unknown>) ?? {};
+          this._lovelaceHookCleanup?.();
+          this._lovelaceHookCleanup = installButtonCardTemplateHook(this._lovelaceTemplates);
+        } catch { /* silencieux */ }
       }
     } catch { /* silencieux */ }
 
@@ -4277,6 +4340,7 @@ class HaCardPlaygroundPreview extends LitElement {
     this._channel.close();
     clearInterval(this._hassTimer);
     try { this._stateUnsub?.(); } catch {}
+    this._lovelaceHookCleanup?.();
   }
 
   private _getHass(): HomeAssistant | undefined {
