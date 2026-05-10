@@ -1,6 +1,6 @@
 # HA Card Playground — by VDG7
 
-**v0.8.4 · Live card preview with detachable window**
+**v0.8.5 · Live card preview with detachable window**
 
 ![Main view — editor + live preview side by side](screenshots/main-view.png)
 

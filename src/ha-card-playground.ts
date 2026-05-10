@@ -4278,12 +4278,12 @@ class HaCardPlaygroundPreview extends LitElement {
       margin-left: 4px;
     }
     .preview-body {
-      flex: 1;
+      flex: 1; width: 100%;
       overflow-y: auto;
       display: flex; align-items: flex-start; justify-content: center;
       padding: 24px; box-sizing: border-box;
     }
-    :host([wide]) .preview-body { padding: 8px; justify-content: flex-start; }
+    :host([wide]) .preview-body { padding: 0; justify-content: flex-start; }
     .wrap { width: 100%; max-width: 540px; --ha-card-border-width: 0px; }
     :host([wide]) .wrap { margin: 0; max-width: none; width: 100%; }
     .card-host { display: contents; }
@@ -4512,7 +4512,8 @@ class HaCardPlaygroundPreview extends LitElement {
   }
 
   render() {
-    const wrapStyle = `zoom:${this._zoom / 100};${this._desktopWidth <= 800 ? `max-width:${this._desktopWidth}px;` : ''}${this._canvasHeight ? `height:${this._canvasHeight}` : ''}`;
+    const zoomPart = this._zoom !== 100 ? `zoom:${this._zoom / 100};` : '';
+    const wrapStyle = `${zoomPart}${this._desktopWidth <= 800 ? `max-width:${this._desktopWidth}px;` : ''}${this._canvasHeight ? `height:${this._canvasHeight}` : ''}`;
     return html`
       ${IS_PREVIEW ? html`
         <div class="fake-ha-header">

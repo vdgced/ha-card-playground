@@ -4,6 +4,14 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.8.5 — Fenêtre détachée : pleine largeur sans padding
+
+### Fix — contenu ne remplissait pas toute la largeur en mode tableau de bord
+
+En mode large (desktopWidth > 800px), suppression du `padding: 8px` sur `.preview-body` — les cartes s'étendent maintenant de bord à bord comme sur un vrai dashboard HA. `width: 100%` ajouté explicitement sur `.preview-body`. Zoom n'est plus injecté dans le style inline quand il vaut 100% (évite `zoom:1` superflu).
+
+---
+
 ## v0.8.4 — Fenêtre détachée : fausse barre HA injectée
 
 ### Feat — barre de menu HA simulée en fenêtre détachée
