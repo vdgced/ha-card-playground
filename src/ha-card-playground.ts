@@ -4266,12 +4266,12 @@ class HaCardPlaygroundPreview extends LitElement {
   static styles = css`
     :host {
       display: flex; align-items: flex-start; justify-content: center;
-      height: 100%; overflow-y: auto;
+      height: 100%; min-height: 100vh; overflow-y: auto;
       padding: 24px; box-sizing: border-box;
       background: var(--primary-background-color, #111827);
     }
-    :host([wide]) { padding: 8px; align-items: stretch; }
-    :host([wide]) .wrap { margin: 0; }
+    :host([wide]) { padding: 8px; align-items: flex-start; justify-content: flex-start; }
+    :host([wide]) .wrap { margin: 0; max-width: none; width: 100%; }
     .wrap { width: 100%; max-width: 540px; --ha-card-border-width: 0px; }
     .card-host { display: contents; }
     .error {
@@ -4500,7 +4500,7 @@ class HaCardPlaygroundPreview extends LitElement {
 
   render() {
     return html`
-      <div class="wrap" style="zoom:${this._zoom / 100};max-width:${this._desktopWidth}px${this._canvasHeight ? `;height:${this._canvasHeight}` : ''}">
+      <div class="wrap" style="zoom:${this._zoom / 100};${this._desktopWidth <= 800 ? `max-width:${this._desktopWidth}px;` : ''}${this._canvasHeight ? `height:${this._canvasHeight}` : ''}">
         <div class="card-host"></div>
         ${this._error
           ? html`<div class="error">⚠ ${this._error}</div>`

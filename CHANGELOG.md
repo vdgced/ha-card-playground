@@ -4,6 +4,16 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.8.2 — Fenêtre détachée : pleine largeur en mode tableau de bord
+
+### Fix — carte ne remplissait pas toute la largeur en mode large
+
+En mode "tableau de bord" (`desktopWidth > 800px`), la fenêtre détachée n'applique plus de `max-width` sur la carte — elle prend `width: 100%` pleine largeur, exactement comme sur un vrai dashboard. En mode carte seule (`desktopWidth ≤ 800px`), le `max-width` est maintenu.
+
+Ajout de `min-height: 100vh` en fallback pour les cas où le parent HA n'a pas de hauteur explicite.
+
+---
+
 ## v0.8.1 — Fenêtre détachée : hauteur dashboard réelle
 
 ### Fix — hauteur fenêtre détachée
