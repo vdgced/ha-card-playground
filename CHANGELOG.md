@@ -4,6 +4,35 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.7.99 — Fenêtre détachée : fix vignette, largeur tableau de bord, zoom éditeur
+
+### Fix — vignette invisible dans la fenêtre détachée (écran externe)
+
+La carte n'apparaissait pas dans la fenêtre détachée lors d'un changement d'état Lit (zoom, largeur…). **Cause** : `wrap.innerHTML = ""` détruisait les marqueurs internes de Lit ; au re-render suivant, Lit réinjectait le div "waiting" et écrasait la carte. **Fix** : ajout d'un `<div class="card-host">` statique (hors tout binding `${}`) où la carte est appendée — Lit ne touche jamais son contenu.
+
+### Paramètres utilisateur persistés entre sessions
+
+Les réglages suivants sont désormais sauvegardés dans `localStorage` et restaurés à la réouverture :
+- Position du séparateur éditeur/aperçu (`_splitPct`)
+- Zoom de l'aperçu intégré (`_previewZoom`)
+- Taille de police de l'éditeur (`_fontSize`)
+- Zoom de la fenêtre détachée (`_winZoom`)
+
+### Largeur aperçu étendue pour tableau de bord complet
+
+- Slider étendu de 1 600 px → **3 840 px**
+- Nouveaux presets "Tableau de bord" : `Laptop` 1 366 px · `FHD` 1 920 px · `2K` 2 560 px · `4K` 3 840 px
+- En mode large (> 800 px), la fenêtre détachée supprime le padding et étire la carte pleine largeur
+
+### Fenêtre détachée — zoom déplacé dans l'éditeur
+
+- Les contrôles zoom ont été retirés de la fenêtre détachée
+- Un bloc "Zoom fenêtre" (`− slider % + ↺`) apparaît dans la zone "Réintégrer l'aperçu" de l'éditeur quand l'aperçu est détaché
+- Le zoom est envoyé en temps réel à la fenêtre via BroadcastChannel
+- La hauteur de la fenêtre tient désormais compte de la barre HA (`calc(100vh - var(--header-height, 56px))`)
+
+---
+
 ## v0.7.98 — Support button_card_templates + fix faux positif `template:`
 
 ### Fix — button_card_templates disponibles dans l'aperçu

@@ -44,7 +44,7 @@ const CHANNEL = "card-playground";
 type Msg =
   | { type: "yaml-update"; yaml: string }
   | { type: "request-yaml" }
-  | { type: "settings-update"; desktopWidth: number };
+  | { type: "settings-update"; desktopWidth: number; winZoom: number };
 
 // ── Détecte si on est en mode preview (fenêtre détachée) ───────────────────
 
@@ -410,7 +410,8 @@ content: |
   @state() private _searchSuggestions: string[] = [];
   @state() private _searchSugIdx = -1;
   private _searchLast = '';
-  @state() private _desktopWidth = 300;         // largeur colonne desktop (px) — 4 col HA par défaut
+  @state() private _desktopWidth = 300;
+  @state() private _winZoom = 100;
   @state() private _canvasHeight: string | null = null; // hauteur forcée quand type canvas
   @state() private _checkOpen = false;
   @state() private _checkResult: Array<{ type: 'ok' | 'error' | 'warn'; msg: string }> | null = null;
@@ -542,7 +543,12 @@ content: |
     .detached-msg {
       flex: 1; display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      gap: 8px; color: var(--secondary-text-color); font-size: 14px;
+      gap: 16px; color: var(--secondary-text-color); font-size: 14px;
+    }
+    .win-zoom-row {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 12px 16px; border-radius: 10px;
+      border: 1px solid var(--divider-color);
     }
     .reattach-btn {
       display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -592,6 +598,7 @@ content: |
     .setting-slider-row { display: flex; align-items: center; gap: 8px; }
     .setting-slider-row input[type=range] { flex: 1; accent-color: var(--primary-color); }
     .setting-val { font-size: 12px; min-width: 44px; text-align: right; opacity: .75; }
+    .preset-group-label { font-size: 10px; opacity: .5; text-transform: uppercase; letter-spacing: .06em; margin-bottom: -2px; }
     .setting-num {
       width: 56px; background: transparent; border: 1px solid var(--divider-color);
       border-radius: 4px; color: var(--primary-text-color); font-size: 12px;
@@ -682,12 +689,20 @@ content: |
     if (saved) this._yaml = saved;
     const savedWidth = localStorage.getItem("card-playground-desktop-width");
     if (savedWidth !== null) this._desktopWidth = Number(savedWidth);
+    const savedWinZoom = localStorage.getItem("card-playground-win-zoom");
+    if (savedWinZoom !== null) this._winZoom = Math.max(10, Math.min(200, Number(savedWinZoom)));
     const savedAutoFull = localStorage.getItem("card-playground-auto-full");
     if (savedAutoFull !== null) this._autoFullOnDetach = savedAutoFull === "1";
     const savedInspect = localStorage.getItem("card-playground-inspect-btn");
     if (savedInspect !== null) this._showInspectBtn = savedInspect === "1";
     const savedDark = localStorage.getItem("card-playground-dark");
     if (savedDark !== null) this._darkMode = savedDark !== "0";
+    const savedSplit = localStorage.getItem("card-playground-split-pct");
+    if (savedSplit !== null) this._splitPct = Math.max(62, Math.min(80, Number(savedSplit)));
+    const savedPrevZoom = localStorage.getItem("card-playground-preview-zoom");
+    if (savedPrevZoom !== null) this._previewZoom = Math.max(10, Math.min(200, Number(savedPrevZoom)));
+    const savedFontSize = localStorage.getItem("card-playground-font-size");
+    if (savedFontSize !== null) this._fontSize = Math.max(10, Math.min(24, Number(savedFontSize)));
     this._applyCompletionStyles();
     this._initCodeMirror();
     this._initDragDrop();
@@ -757,7 +772,7 @@ content: |
         ),
       });
     }
-    if (ch.has("_desktopWidth") && this._detached) {
+    if ((ch.has("_desktopWidth") || ch.has("_winZoom")) && this._detached) {
       this._sendSettings();
     }
     if (ch.has("_autoSave")) {
@@ -765,6 +780,9 @@ content: |
     }
     if (ch.has("_desktopWidth")) {
       localStorage.setItem("card-playground-desktop-width", String(this._desktopWidth));
+    }
+    if (ch.has("_winZoom")) {
+      localStorage.setItem("card-playground-win-zoom", String(this._winZoom));
     }
     if (ch.has("_autoFullOnDetach")) {
       localStorage.setItem("card-playground-auto-full", this._autoFullOnDetach ? "1" : "0");
@@ -778,6 +796,15 @@ content: |
         effects: this._themeCompartment.reconfigure(this._darkMode ? this._darkTheme() : this._lightTheme()),
       });
       this._applyCompletionStyles();
+    }
+    if (ch.has("_splitPct")) {
+      localStorage.setItem("card-playground-split-pct", String(this._splitPct));
+    }
+    if (ch.has("_previewZoom")) {
+      localStorage.setItem("card-playground-preview-zoom", String(this._previewZoom));
+    }
+    if (ch.has("_fontSize")) {
+      localStorage.setItem("card-playground-font-size", String(this._fontSize));
     }
   }
 
@@ -956,7 +983,7 @@ content: |
   };
 
   private _sendSettings(): void {
-    this._channel.postMessage({ type: "settings-update", desktopWidth: this._desktopWidth } satisfies Msg);
+    this._channel.postMessage({ type: "settings-update", desktopWidth: this._desktopWidth, winZoom: this._winZoom } satisfies Msg);
   }
 
   // ── Clés YAML par type de carte ────────────────────────────────────────────
@@ -1711,21 +1738,21 @@ content: |
     if (cardsParent === 'cards') {
       const rootType = this._getCardTypeAtCursor(ctx.state, ctx.pos);
       if (rootType === 'custom:ha-canvas-card') {
-        const canvasItemKeys = [
-          { label: 'x',       detail: 'number | string — position gauche (pixels ou %)' },
-          { label: 'y',       detail: 'number | string — position haut (pixels ou %)' },
-          { label: 'w',       detail: 'number | string — largeur (pixels ou %)' },
-          { label: 'h',       detail: 'number | string — hauteur (pixels ou %)' },
-          { label: 'right',   detail: 'number | string — ancrage bord droit' },
-          { label: 'bottom',  detail: 'number | string — ancrage bord bas' },
-          { label: 'z',       detail: 'number — z-index' },
-          { label: 'opacity', detail: 'number (0–1)' },
-          { label: 'card',    detail: 'object — carte HA imbriquée' },
+        const canvasItemKeys: Array<{ label: string; insertText: string; detail: string }> = [
+          { label: 'position x', insertText: 'x',       detail: 'number | string — position gauche (pixels ou %)' },
+          { label: 'position y', insertText: 'y',       detail: 'number | string — position haut (pixels ou %)' },
+          { label: 'largeur w',  insertText: 'w',       detail: 'number | string — largeur (pixels ou %)' },
+          { label: 'hauteur h',  insertText: 'h',       detail: 'number | string — hauteur (pixels ou %)' },
+          { label: 'right',      insertText: 'right',   detail: 'number | string — ancrage bord droit' },
+          { label: 'bottom',     insertText: 'bottom',  detail: 'number | string — ancrage bord bas' },
+          { label: 'z-index',    insertText: 'z',       detail: 'number — z-index' },
+          { label: 'opacity',    insertText: 'opacity', detail: 'number (0–1)' },
+          { label: 'card',       insertText: 'card',    detail: 'object — carte HA imbriquée' },
         ]
-          .filter(k => typed.length === 0 || k.label.includes(typed))
+          .filter(k => typed.length === 0 || k.insertText.includes(typed) || k.label.includes(typed))
           .map(k => ({
             ...k, type: "variable" as const,
-            apply: HaCardPlaygroundEditor._BLOCK_KEYS.has(k.label) ? k.label + ':' : k.label + ': ',
+            apply: HaCardPlaygroundEditor._BLOCK_KEYS.has(k.insertText) ? k.insertText + ':' : k.insertText + ': ',
           }));
         if (canvasItemKeys.length) return { from: fromPos, options: canvasItemKeys, validFor: /[\w-]*/ };
       }
@@ -4092,9 +4119,10 @@ content: |
                 <h3>Paramètres</h3>
                 <div class="setting-row setting-row--col">
                   <div class="setting-label">
-                    Largeur colonne Desktop
-                    <div class="setting-desc">4 col = défaut HA · plus de colonnes = carte plus étroite</div>
+                    Largeur aperçu
+                    <div class="setting-desc">Carte seule ou tableau de bord complet</div>
                   </div>
+                  <div class="preset-group-label">Colonnes HA</div>
                   <div class="col-presets">
                     ${([
                       {l:"1",w:1200},{l:"2",w:600},{l:"3",w:400},{l:"4",w:300},
@@ -4104,14 +4132,23 @@ content: |
                         title="${p.w}px"
                         @click=${()=>{this._desktopWidth=p.w;}}>${p.l} col</button>`)}
                   </div>
+                  <div class="preset-group-label">Tableau de bord</div>
+                  <div class="col-presets">
+                    ${([
+                      {l:"Laptop",w:1366},{l:"FHD",w:1920},{l:"2K",w:2560},{l:"4K",w:3840}
+                    ] as const).map(p => html`
+                      <button class="col-preset ${this._desktopWidth===p.w?"active":""}"
+                        title="${p.w}px"
+                        @click=${()=>{this._desktopWidth=p.w;}}>${p.l}</button>`)}
+                  </div>
                   <div class="setting-slider-row">
-                    <input type="range" min="100" max="1600" step="1"
+                    <input type="range" min="100" max="3840" step="1"
                       .value=${String(this._desktopWidth)}
                       @input=${(e: Event) => { this._desktopWidth = Number((e.target as HTMLInputElement).value); }}>
-                    <input type="number" class="setting-num" min="100" max="1600"
+                    <input type="number" class="setting-num" min="100" max="3840"
                       .value=${String(this._desktopWidth)}
                       @change=${(e: Event) => {
-                        const v = Math.min(1600, Math.max(100, Number((e.target as HTMLInputElement).value)));
+                        const v = Math.min(3840, Math.max(100, Number((e.target as HTMLInputElement).value)));
                         this._desktopWidth = v;
                       }}>
                   </div>
@@ -4167,6 +4204,19 @@ content: |
                 <div style="font-size:14px;font-weight:500">Réintégrer l'aperçu</div>
                 <div style="font-size:11px;opacity:.5">Ferme la fenêtre externe</div>
               </button>
+              <div class="win-zoom-row">
+                <span style="font-size:11px;opacity:.5;text-transform:uppercase;letter-spacing:.05em">Zoom fenêtre</span>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+                  <button class="zoom-btn" @click=${()=>{this._winZoom=Math.max(10,this._winZoom-5)}}>−</button>
+                  <input type="range" min="10" max="200" step="5"
+                    .value=${String(this._winZoom)}
+                    style="width:90px;cursor:pointer;accent-color:var(--primary-color)"
+                    @input=${(e:Event)=>{this._winZoom=Number((e.target as HTMLInputElement).value);}}>
+                  <span style="font-size:13px;font-weight:700;min-width:38px;text-align:center">${this._winZoom}%</span>
+                  <button class="zoom-btn" @click=${()=>{this._winZoom=Math.min(200,this._winZoom+5)}}>+</button>
+                  <button class="zoom-btn" title="Réinitialiser" @click=${()=>{this._winZoom=100}}>↺</button>
+                </div>
+              </div>
             </div>` : html`
             <div class="preview-area" style="${this._inspectMode ? "cursor:crosshair" : ""}">
               ${this._inspectMode ? html`
@@ -4214,57 +4264,28 @@ class HaCardPlaygroundPreview extends LitElement {
   @state() private _zoom = 100;
   @state() private _desktopWidth = 300;
   @state() private _canvasHeight: string | null = null;
+  @state() private _cardReady = false;
 
   static styles = css`
     :host {
       display: flex; align-items: flex-start; justify-content: center;
-      min-height: 100vh; padding: 24px; box-sizing: border-box;
+      min-height: calc(100vh - var(--header-height, 56px));
+      padding: 24px; box-sizing: border-box;
       background: var(--primary-background-color, #111827);
     }
+    :host([wide]) { padding: 8px; align-items: stretch; }
+    :host([wide]) .wrap { margin: 0; }
     .wrap { width: 100%; max-width: 540px; --ha-card-border-width: 0px; margin-top: auto; margin-bottom: auto; }
+    .card-host { display: contents; }
     .error {
       padding: 16px; background: #ef4444; color: white;
       border-radius: 8px; font-size: 13px; font-family: monospace;
       white-space: pre-wrap;
     }
     .waiting { color: #6b7280; text-align: center; font-family: sans-serif; font-size: 14px; }
-    .zoom-controls {
-      position: fixed; bottom: 16px; right: 16px;
-      display: flex; align-items: center; gap: 8px;
-    }
-    .zoom-bar {
-      display: flex; align-items: center; gap: 8px;
-      background: rgba(0,0,0,.6); backdrop-filter: blur(6px);
-      border-radius: 20px; padding: 8px 16px;
-    }
-    .zoom-bar button {
-      background: none; border: none; color: white; cursor: pointer;
-      font-size: 20px; font-weight: bold; line-height: 1; padding: 0 4px;
-      opacity: .85;
-    }
-    .zoom-bar button:hover { opacity: 1; }
-    .zoom-bar span { color: white; font-size: 13px; min-width: 42px; text-align: center; opacity: .75; }
-    .refresh-btn {
-      background: rgba(0,0,0,.6); backdrop-filter: blur(6px);
-      border: none; border-radius: 50%; width: 38px; height: 38px;
-      color: white; cursor: pointer; font-size: 18px;
-      display: flex; align-items: center; justify-content: center;
-      opacity: .75; transition: opacity .15s, transform .2s;
-    }
-    .refresh-btn:hover { opacity: 1; transform: rotate(-30deg); }
-    .preview-badge {
-      text-align: center; font-size: 15px; opacity: .45;
-      margin-top: 10px; letter-spacing: .04em; font-family: sans-serif;
-    }
   `;
 
   protected async firstUpdated(): Promise<void> {
-    this.addEventListener('wheel', (e: WheelEvent) => {
-      e.preventDefault();
-      const step = e.deltaY < 0 ? 5 : -5;
-      this._zoom = Math.min(200, Math.max(10, this._zoom + step));
-    }, { passive: false });
-
     try {
       this._helpers = await window.loadCardHelpers();
     } catch {
@@ -4306,7 +4327,10 @@ class HaCardPlaygroundPreview extends LitElement {
     // Écoute les mises à jour depuis l'éditeur
     this._channel.onmessage = (e: MessageEvent<Msg>) => {
       if (e.data.type === "yaml-update") this._renderCard(e.data.yaml);
-      if (e.data.type === "settings-update") this._desktopWidth = e.data.desktopWidth;
+      if (e.data.type === "settings-update") {
+        this._desktopWidth = e.data.desktopWidth;
+        this._zoom = e.data.winZoom;
+      }
     };
 
     // Demande le YAML courant
@@ -4335,6 +4359,12 @@ class HaCardPlaygroundPreview extends LitElement {
     }
   }
 
+  protected updated(ch: Map<PropertyKey, unknown>): void {
+    if (ch.has("_desktopWidth")) {
+      this.toggleAttribute("wide", this._desktopWidth > 800);
+    }
+  }
+
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._channel.close();
@@ -4358,6 +4388,7 @@ class HaCardPlaygroundPreview extends LitElement {
       if (!config.type) throw new Error('"type" manquant');
     } catch (err) {
       this._error = String(err instanceof Error ? err.message : err);
+      this._cardReady = false;
       return;
     }
 
@@ -4367,7 +4398,8 @@ class HaCardPlaygroundPreview extends LitElement {
 
   private async _doRender(config: Record<string, unknown>): Promise<void> {
     const wrap = this.renderRoot.querySelector(".wrap") as HTMLElement;
-    if (!wrap) return;
+    const host = this.renderRoot.querySelector(".card-host") as HTMLElement;
+    if (!wrap || !host) return;
 
     const cardType = config.type as string;
 
@@ -4402,9 +4434,11 @@ class HaCardPlaygroundPreview extends LitElement {
       } catch { /* recréer */ }
     }
 
-    // Recréation complète (type changé ou styles modifiés)
+    // Recréation complète — .card-host est un nœud statique (pas de binding ${} dedans)
+    // → innerHTML = "" ne détruit pas les marqueurs internes Lit du .wrap parent
     this._lastStylesKey = stylesKey;
-    wrap.innerHTML = "";
+    host.innerHTML = "";
+    this._cardReady = false;
 
     type AnyCard = HTMLElement & { hass?: HomeAssistant; setConfig?: (c: Record<string, unknown>) => void };
 
@@ -4412,7 +4446,7 @@ class HaCardPlaygroundPreview extends LitElement {
       const tagName = cardType.slice(7);
       const defined = customElements.get(tagName);
       if (!defined) {
-        this._mountErrorCard(wrap, new Error(`Élément "${tagName}" introuvable.`), config);
+        this._mountErrorCard(host, new Error(`Élément "${tagName}" introuvable.`), config);
         return;
       }
       try {
@@ -4422,12 +4456,13 @@ class HaCardPlaygroundPreview extends LitElement {
           card.setConfig(configWithoutType as Record<string, unknown>);
         }
         card.hass = this._getHass();
-        wrap.appendChild(card);
+        host.appendChild(card);
         this._cardElement = card;
         this._lastCardType = cardType;
+        this._cardReady = true;
         return;
       } catch (err) {
-        this._mountErrorCard(wrap, err, config);
+        this._mountErrorCard(host, err, config);
         return;
       }
     }
@@ -4435,11 +4470,12 @@ class HaCardPlaygroundPreview extends LitElement {
     try {
       const card = this._helpers!.createCardElement(config);
       card.hass = this._getHass();
-      wrap.appendChild(card);
+      host.appendChild(card);
       this._cardElement = card;
       this._lastCardType = cardType;
+      this._cardReady = true;
     } catch (err) {
-      this._mountErrorCard(wrap, err, config);
+      this._mountErrorCard(host, err, config);
     }
   }
 
@@ -4456,8 +4492,10 @@ class HaCardPlaygroundPreview extends LitElement {
         origConfig,
       });
       container.appendChild(errCard);
+      this._cardReady = true;
     } catch {
       this._error = msg;
+      this._cardReady = false;
     }
     this._cardElement = undefined;
     this._lastCardType = "";
@@ -4466,24 +4504,14 @@ class HaCardPlaygroundPreview extends LitElement {
   render() {
     return html`
       <div class="wrap" style="zoom:${this._zoom / 100};max-width:${this._desktopWidth}px${this._canvasHeight ? `;height:${this._canvasHeight}` : ''}">
+        <div class="card-host"></div>
         ${this._error
           ? html`<div class="error">⚠ ${this._error}</div>`
-          : html`<div class="waiting">En attente du YAML…</div>`}
+          : !this._cardReady
+          ? html`<div class="waiting">En attente du YAML…</div>`
+          : ""}
       </div>
-      ${this._zoom !== 100 ? html`<div class="preview-badge">Aperçu · taille non contractuelle</div>` : ""}
-      <div class="zoom-controls">
-        <button class="refresh-btn" title="Vue normale"
-          @click=${() => { this._zoom = 100; }}>↺</button>
-        <div class="zoom-bar">
-          <button @click=${() => { this._zoom = Math.max(10, this._zoom - 2); }}>−</button>
-          <input type="range" min="10" max="200" step="2"
-            .value=${String(this._zoom)}
-            style="width:90px;cursor:pointer;accent-color:white"
-            @input=${(e: Event) => { this._zoom = Number((e.target as HTMLInputElement).value); }}>
-          <span>${this._zoom}%</span>
-          <button @click=${() => { this._zoom = Math.min(200, this._zoom + 2); }}>+</button>
-        </div>
-      </div>`;
+      `;
   }
 }
 

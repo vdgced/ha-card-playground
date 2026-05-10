@@ -1,6 +1,6 @@
 # HA Card Playground — by VDG7
 
-**v0.7.97 · Live card preview with detachable window**
+**v0.7.99 · Live card preview with detachable window**
 
 ![Main view — editor + live preview side by side](screenshots/main-view.png)
 
@@ -319,7 +319,18 @@ Configure the preview width to simulate how the card will look at different grid
 | 8 col | 150 px |
 | 10 col | 120 px |
 
-Plus a **pixel-precise slider** (100–1600 px) and a **direct numeric input** field. Current width is shown live in the preview toolbar. Setting is persisted in `localStorage`.
+Plus a **pixel-precise slider** (100–3840 px) and a **direct numeric input** field. Current width is shown live in the preview toolbar.
+
+**Dashboard presets** for full-screen preview on an external monitor:
+
+| Preset | Width |
+|--------|-------|
+| Laptop | 1 366 px |
+| FHD | 1 920 px |
+| 2K | 2 560 px |
+| 4K | 3 840 px |
+
+All settings (split position, zoom, font size…) are automatically saved in `localStorage` and restored on next open.
 
 ---
 
@@ -330,18 +341,19 @@ Plus a **pixel-precise slider** (100–1600 px) and a **direct numeric input** f
 - **BroadcastChannel API** (`card-playground` channel) syncs YAML and settings between windows in real time
 - On open, the detached window sends a `request-yaml` message and the editor replies immediately with the current YAML
 
-#### Zoom controls (both views)
+#### Zoom controls
 
-**Mouse wheel zoom** — scroll the mouse wheel directly over the preview to zoom in/out (no modifier key needed):
-- **Inline preview** — wheel over the preview area
-- **Detached window** — wheel anywhere in the window
+**Inline preview** — toolbar buttons (`−` / slider / `+` / `↺`) and mouse wheel over the preview area.
 
-Fixed bar in the bottom-right corner of the detached window (also in the preview toolbar for the inline view):
-- `↺` — reset zoom to 100%
-- `−` / `+` — decrease / increase zoom in 2% steps (range: 10%–200%)
-- Current zoom percentage displayed between the buttons
-- Uses CSS `zoom` property (not `transform: scale`) — scroll behavior remains natural at any zoom level
-- When zoom ≠ 100%, a badge **"Aperçu · taille non contractuelle"** appears below the card (15 px, 45% opacity) as a reminder that the displayed size is not the real card size
+**Detached window** — zoom is controlled from the editor. When the preview is detached, a **"Zoom fenêtre"** block appears in the "Réintégrer" area of the editor:
+- `−` / `+` in 5 % steps (range: 10 %–200 %)
+- Slider for fine-grained control
+- `↺` to reset to 100 %
+- Changes are sent to the detached window in real time via BroadcastChannel and persisted in `localStorage`
+
+Uses CSS `zoom` property (not `transform: scale`) — scroll behavior stays natural at any zoom level.
+
+In wide mode (preview width > 800 px), the detached window removes padding and stretches the card to full width — ideal for building a complete dashboard on a second monitor.
 
 #### Auto full-screen on detach
 

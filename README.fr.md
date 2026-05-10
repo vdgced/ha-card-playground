@@ -1,6 +1,6 @@
 # HA Card Playground — by VDG7
 
-**v0.7.97 · Prévisualisez vos cartes Home Assistant en temps réel — même sur un second écran**
+**v0.7.99 · Prévisualisez vos cartes Home Assistant en temps réel — même sur un second écran**
 
 ![Vue principale — éditeur + aperçu en direct côte à côte](screenshots/main-view.png)
 
@@ -62,23 +62,32 @@ Vous pouvez aussi choisir la largeur d'affichage de votre carte pour simuler dif
 | 8 col | 150 px | |
 | 10 col | 120 px | Très étroit |
 
-Ou utilisez le curseur pour régler pixel par pixel (100–1600 px), ou tapez directement un nombre.
+Ou utilisez le curseur pour régler pixel par pixel (100–3840 px), ou tapez directement un nombre.
 
-### Travailler sur deux écrans
+**Presets tableau de bord complet :**
 
-Cliquez sur **↗ Détacher** — l'aperçu s'ouvre dans une nouvelle fenêtre (540×760 px) que vous placez sur votre second écran. La fenêtre détachée charge le frontend complet de Home Assistant, exactement comme votre tableau de bord. Continuez à éditer sur le premier écran — la carte se met à jour en temps réel grâce à l'API BroadcastChannel.
+| Preset | Largeur |
+|--------|---------|
+| Laptop | 1 366 px |
+| FHD | 1 920 px |
+| 2K | 2 560 px |
+| 4K | 3 840 px |
 
-**Zoom à la molette :**
+Tous les réglages (position du séparateur, zoom, taille de police…) sont mémorisés automatiquement et restaurés à la réouverture.
 
-Faites tourner la molette directement sur l'aperçu pour zoomer/dézoomer, sans maintenir de touche :
-- **Aperçu intégré** : molette sur la zone de preview
-- **Fenêtre détachée** : molette n'importe où dans la fenêtre
+### Travailler sur deux écrans — tableau de bord complet
 
-**Contrôles de zoom (barre fixe en bas à droite) :**
-- `−` / `+` pour diminuer ou augmenter le zoom par pas de 2% (plage 10%–200%)
-- `↺` pour revenir à 100%
-- Le zoom utilise la propriété CSS `zoom` (et non `transform: scale`) pour que le scroll reste naturel quelle que soit la taille
-- Quand le zoom est différent de 100%, un badge **"Aperçu · taille non contractuelle"** s'affiche sous la carte pour rappeler que la taille affichée n'est pas la vraie taille de la carte
+Cliquez sur **↗ Détacher** — l'aperçu s'ouvre dans une nouvelle fenêtre que vous placez sur votre second écran. La fenêtre charge le frontend complet de Home Assistant. Continuez à éditer sur le premier écran — la carte se met à jour en temps réel.
+
+Choisissez une largeur "Tableau de bord" (FHD, 2K, 4K…) pour voir votre dashboard en pleine largeur sur l'écran externe. En mode large (> 800 px), la fenêtre supprime les marges et étire la carte pleine largeur.
+
+**Contrôle du zoom depuis l'éditeur :**
+
+Quand l'aperçu est détaché, un bloc **"Zoom fenêtre"** apparaît dans la zone "Réintégrer l'aperçu" :
+- `−` / `+` par pas de 5 % (plage 10 %–200 %)
+- Curseur pour un réglage précis
+- `↺` pour revenir à 100 %
+- Le zoom est transmis en temps réel à la fenêtre externe via BroadcastChannel et mémorisé entre sessions
 
 Quand vous fermez la fenêtre détachée (ou cliquez **↙ Réintégrer**), l'aperçu revient automatiquement dans le panneau principal et se remet à jour.
 
