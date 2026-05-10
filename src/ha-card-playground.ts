@@ -4266,13 +4266,13 @@ class HaCardPlaygroundPreview extends LitElement {
   static styles = css`
     :host {
       display: flex; align-items: flex-start; justify-content: center;
-      height: calc(100vh - var(--header-height, 56px));
-      overflow-y: auto; padding: 24px; box-sizing: border-box;
+      height: 100%; overflow-y: auto;
+      padding: 24px; box-sizing: border-box;
       background: var(--primary-background-color, #111827);
     }
-    :host([wide]) { padding: 8px; align-items: stretch; overflow-y: auto; }
+    :host([wide]) { padding: 8px; align-items: stretch; }
     :host([wide]) .wrap { margin: 0; }
-    .wrap { width: 100%; max-width: 540px; --ha-card-border-width: 0px; margin-top: auto; margin-bottom: auto; }
+    .wrap { width: 100%; max-width: 540px; --ha-card-border-width: 0px; }
     .card-host { display: contents; }
     .error {
       padding: 16px; background: #ef4444; color: white;

@@ -4,6 +4,14 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.8.1 — Fenêtre détachée : hauteur dashboard réelle
+
+### Fix — hauteur fenêtre détachée
+
+Correction de l'approche précédente (`calc(100vh - var(--header-height))` qui pouvait être incorrecte ou doublement soustraite). La fenêtre détachée utilise maintenant `height: 100%` — HA positionne déjà le panel sous la barre, la carte remplit exactement la zone disponible comme sur un vrai tableau de bord.
+
+---
+
 ## v0.8.0 — Fenêtre détachée : hauteur écran + zoom inline
 
 ### Fix — hauteur fenêtre détachée
