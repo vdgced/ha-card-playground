@@ -4,6 +4,14 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.8.7 — Fenêtre détachée : auto-zoom proportionnel au desktopWidth
+
+### Feat — cartes à la même taille que le vrai dashboard
+
+En mode large (desktopWidth > 800px) et fenêtre détachée, la carte est maintenant rendue à exactement `desktopWidth` pixels de large, puis zoomée automatiquement pour remplir la fenêtre disponible (`zoom = containerWidth / desktopWidth`). Résultat : les proportions des cartes sont identiques au vrai tableau de bord, quelle que soit la taille de la popup. Un `ResizeObserver` met à jour le zoom automatiquement si la fenêtre est redimensionnée. Le zoom manuel (winZoom) s'applique en multiplicateur sur l'auto-zoom.
+
+---
+
 ## v0.8.6 — Fix scroll après zoom
 
 ### Fix — impossible de scroller sur toute la carte après un zoom

@@ -4247,6 +4247,8 @@ class HaCardPlaygroundPreview extends LitElement {
   @state() private _desktopWidth = 300;
   @state() private _canvasHeight: string | null = null;
   @state() private _cardReady = false;
+  @state() private _containerWidth = 0;
+  private _resizeObserver?: ResizeObserver;
 
   static styles = css`
     :host {
@@ -4367,6 +4369,15 @@ class HaCardPlaygroundPreview extends LitElement {
         if (ha?.hass && this._cardElement) this._cardElement.hass = ha.hass;
       }, 500);
     }
+
+    // Auto-zoom en mode preview détaché : suit la largeur réelle du container
+    if (IS_PREVIEW) {
+      this._containerWidth = this.clientWidth;
+      this._resizeObserver = new ResizeObserver((entries) => {
+        this._containerWidth = entries[0]?.contentRect.width ?? this.clientWidth;
+      });
+      this._resizeObserver.observe(this);
+    }
   }
 
   protected updated(ch: Map<PropertyKey, unknown>): void {
@@ -4381,6 +4392,7 @@ class HaCardPlaygroundPreview extends LitElement {
     clearInterval(this._hassTimer);
     try { this._stateUnsub?.(); } catch {}
     this._lovelaceHookCleanup?.();
+    this._resizeObserver?.disconnect();
   }
 
   private _getHass(): HomeAssistant | undefined {
@@ -4512,8 +4524,18 @@ class HaCardPlaygroundPreview extends LitElement {
   }
 
   render() {
-    const zoomPart = this._zoom !== 100 ? `zoom:${this._zoom / 100};` : '';
-    const wrapStyle = `${zoomPart}${this._desktopWidth <= 800 ? `max-width:${this._desktopWidth}px;` : ''}${this._canvasHeight ? `height:${this._canvasHeight}` : ''}`;
+    const isWide = this._desktopWidth > 800;
+    let wrapStyle: string;
+    if (IS_PREVIEW && isWide && this._containerWidth > 0) {
+      // Auto-zoom : carte rendue à desktopWidth px, zoomée pour remplir la fenêtre
+      // → proportions identiques au vrai dashboard, quelle que soit la taille de la popup
+      const autoZoom = this._containerWidth / this._desktopWidth;
+      const effectiveZoom = autoZoom * (this._zoom / 100);
+      wrapStyle = `width:${this._desktopWidth}px;zoom:${effectiveZoom};${this._canvasHeight ? `height:${this._canvasHeight}` : ''}`;
+    } else {
+      const zoomPart = this._zoom !== 100 ? `zoom:${this._zoom / 100};` : '';
+      wrapStyle = `${zoomPart}${!isWide ? `max-width:${this._desktopWidth}px;` : ''}${this._canvasHeight ? `height:${this._canvasHeight}` : ''}`;
+    }
     return html`
       ${IS_PREVIEW ? html`
         <div class="fake-ha-header">
