@@ -4250,14 +4250,42 @@ class HaCardPlaygroundPreview extends LitElement {
 
   static styles = css`
     :host {
-      display: flex; align-items: flex-start; justify-content: center;
-      height: 100%; overflow-y: auto;
-      padding: 24px; box-sizing: border-box;
+      display: flex; flex-direction: column;
+      height: 100%;
       background: var(--primary-background-color, #111827);
     }
-    :host([wide]) { padding: 8px; align-items: flex-start; justify-content: flex-start; }
-    :host([wide]) .wrap { margin: 0; max-width: none; width: 100%; }
+    /* Fausse barre HA — visible uniquement en fenêtre détachée (IS_PREVIEW) */
+    .fake-ha-header {
+      display: flex; align-items: center;
+      height: var(--header-height, 56px);
+      background: var(--app-header-background-color, var(--primary-color));
+      color: var(--app-header-text-color, #fff);
+      padding: 0 4px;
+      box-sizing: border-box;
+      flex-shrink: 0;
+      pointer-events: none;
+    }
+    .fake-ha-header ha-icon {
+      color: inherit;
+      padding: 12px;
+      --mdc-icon-size: 24px;
+    }
+    .header-title {
+      flex: 1;
+      font-size: 20px;
+      font-weight: 400;
+      letter-spacing: 0.005em;
+      margin-left: 4px;
+    }
+    .preview-body {
+      flex: 1;
+      overflow-y: auto;
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: 24px; box-sizing: border-box;
+    }
+    :host([wide]) .preview-body { padding: 8px; justify-content: flex-start; }
     .wrap { width: 100%; max-width: 540px; --ha-card-border-width: 0px; }
+    :host([wide]) .wrap { margin: 0; max-width: none; width: 100%; }
     .card-host { display: contents; }
     .error {
       padding: 16px; background: #ef4444; color: white;
@@ -4484,16 +4512,27 @@ class HaCardPlaygroundPreview extends LitElement {
   }
 
   render() {
+    const wrapStyle = `zoom:${this._zoom / 100};${this._desktopWidth <= 800 ? `max-width:${this._desktopWidth}px;` : ''}${this._canvasHeight ? `height:${this._canvasHeight}` : ''}`;
     return html`
-      <div class="wrap" style="zoom:${this._zoom / 100};${this._desktopWidth <= 800 ? `max-width:${this._desktopWidth}px;` : ''}${this._canvasHeight ? `height:${this._canvasHeight}` : ''}">
-        <div class="card-host"></div>
-        ${this._error
-          ? html`<div class="error">⚠ ${this._error}</div>`
-          : !this._cardReady
-          ? html`<div class="waiting">En attente du YAML…</div>`
-          : ""}
+      ${IS_PREVIEW ? html`
+        <div class="fake-ha-header">
+          <ha-icon icon="mdi:menu"></ha-icon>
+          <span class="header-title">Vue d'ensemble</span>
+          <ha-icon icon="mdi:magnify"></ha-icon>
+          <ha-icon icon="mdi:dots-vertical"></ha-icon>
+        </div>
+      ` : ''}
+      <div class="preview-body">
+        <div class="wrap" style="${wrapStyle}">
+          <div class="card-host"></div>
+          ${this._error
+            ? html`<div class="error">⚠ ${this._error}</div>`
+            : !this._cardReady
+            ? html`<div class="waiting">En attente du YAML…</div>`
+            : ""}
+        </div>
       </div>
-      `;
+    `;
   }
 }
 

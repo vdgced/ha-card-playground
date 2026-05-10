@@ -1,6 +1,6 @@
 # HA Card Playground — by VDG7
 
-**v0.8.3 · Prévisualisez vos cartes Home Assistant en temps réel — même sur un second écran**
+**v0.8.4 · Prévisualisez vos cartes Home Assistant en temps réel — même sur un second écran**
 
 ![Vue principale — éditeur + aperçu en direct côte à côte](screenshots/main-view.png)
 

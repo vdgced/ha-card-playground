@@ -4,6 +4,20 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.8.4 — Fenêtre détachée : fausse barre HA injectée
+
+### Feat — barre de menu HA simulée en fenêtre détachée
+
+`ha-panel-custom` (le type de panel HACS) ne rend jamais de header HA — c'est by design dans le framework HA, indépendant de toute manipulation du shadow DOM. La barre du dessus est exclusive aux dashboards Lovelace (`hui-root`).
+
+Solution : en mode `IS_PREVIEW`, injection d'une fausse barre HA au sommet du composant preview, utilisant les variables CSS HA (`--app-header-background-color`, `--app-header-text-color`, `--header-height`) pour s'adapter au thème de l'utilisateur. Icônes menu, titre "Vue d'ensemble", loupe et menu contextuel.
+
+### Refactor — layout preview restructuré
+
+`:host` passe en `flex-direction: column`. Le contenu carte est déplacé dans `.preview-body` (flex: 1, overflow-y: auto) sous la barre. L'inline preview dans l'éditeur n'est pas affecté (pas de fausse barre hors IS_PREVIEW).
+
+---
+
 ## v0.8.3 — Fenêtre détachée : barre HA visible + suppression espace vide bas
 
 ### Fix — barre de menu HA non visible en fenêtre détachée
