@@ -4,6 +4,14 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.8.8 — Fix version affichée + rebuild propre
+
+### Fix — version affichée incorrecte (v0.8.6 au lieu de v0.8.7)
+
+Le build de la release v0.8.7 avait été fait avant le bump du `package.json`, donc la version injectée dans le JS était `0.8.6`. HACS refusait de proposer la mise à jour. Rebuild propre avec la version correcte.
+
+---
+
 ## v0.8.7 — Fenêtre détachée : auto-zoom proportionnel au desktopWidth
 
 ### Feat — cartes à la même taille que le vrai dashboard
