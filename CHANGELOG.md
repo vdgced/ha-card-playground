@@ -4,6 +4,14 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.8.9 — Fix rechargement HACS : module_url → chemin www root
+
+### Fix — après mise à jour HACS + Ctrl+Shift+R, ancienne version réapparaissait
+
+`module_url` pointait vers `/local/community/ha-card-playground/ha-card-playground.js` géré par HACS, qui pouvait restaurer une version précédente lors du redémarrage HA. Changement : en mode prod, `module_url` pointe maintenant vers `/local/ha-card-playground.js?v=X.Y.Z` (chemin www root, non géré par HACS). Le build copie toujours vers les deux chemins (www root + community), mais HA charge depuis le chemin stable.
+
+---
+
 ## v0.8.8 — Fix version affichée + rebuild propre
 
 ### Fix — version affichée incorrecte (v0.8.6 au lieu de v0.8.7)

@@ -3,7 +3,7 @@
  *
  * Usage :
  *   npm run use:dev   → DEV_URL  (serveur local, no-cache)
- *   npm run use:prod  → /local/community/ha-card-playground/ha-card-playground.js?v=X.Y.Z
+ *   npm run use:prod  → /local/ha-card-playground.js?v=X.Y.Z  (www root, stable, non géré par HACS)
  *                       build + copie NAS (www/ + www/community/) + redémarre HA
  *
  * Config : copier switch-config.example.json → switch-config.json et remplir les valeurs.
@@ -38,8 +38,9 @@ const VERSION = pkg.version;
 const HACS_BASE = "/local/community/ha-card-playground/ha-card-playground.js";
 const HACS_URL  = `${HACS_BASE}?v=${VERSION}`;
 
-// Legacy URL (ancienne config manuelle)
+// URL www root — non gérée par HACS, stable après redémarrage HA
 const OLD_PROD_URL = "/local/ha-card-playground.js";
+const PROD_URL     = `${OLD_PROD_URL}?v=${VERSION}`;
 
 // ── Mode ────────────────────────────────────────────────────────────────────
 const mode = process.argv[2];
@@ -80,16 +81,16 @@ if (mode === "dev") {
   updated = config.replace(lineRegex, `$1${DEV_URL}`);
 
 } else {
-  if (currentUrl === HACS_URL) {
+  if (currentUrl === PROD_URL) {
     console.log("✅ Déjà en mode PROD avec la bonne version, rien à changer.");
     process.exit(0);
   }
-  updated = config.replace(lineRegex, `$1${HACS_URL}`);
+  updated = config.replace(lineRegex, `$1${PROD_URL}`);
 }
 
 fs.writeFileSync(HA_CONFIG, updated, "utf8");
 console.log(`✅ configuration.yaml mis à jour → mode ${mode.toUpperCase()}`);
-console.log(`   module_url: ${mode === "dev" ? DEV_URL : HACS_URL}`);
+console.log(`   module_url: ${mode === "dev" ? DEV_URL : PROD_URL}`);
 
 // ── 3. Si prod : build + double copie NAS ───────────────────────────────────
 if (mode === "prod") {
