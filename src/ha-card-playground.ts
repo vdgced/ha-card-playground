@@ -4279,12 +4279,12 @@ class HaCardPlaygroundPreview extends LitElement {
     }
     .preview-body {
       flex: 1; width: 100%;
-      overflow-y: auto;
+      overflow: auto;
       display: flex; align-items: flex-start; justify-content: center;
       padding: 24px; box-sizing: border-box;
     }
     :host([wide]) .preview-body { padding: 0; justify-content: flex-start; }
-    .wrap { width: 100%; max-width: 540px; --ha-card-border-width: 0px; }
+    .wrap { width: 100%; max-width: 540px; flex-shrink: 0; --ha-card-border-width: 0px; }
     :host([wide]) .wrap { margin: 0; max-width: none; width: 100%; }
     .card-host { display: contents; }
     .error {

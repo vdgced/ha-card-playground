@@ -4,6 +4,14 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.8.6 — Fix scroll après zoom
+
+### Fix — impossible de scroller sur toute la carte après un zoom
+
+`flex-shrink: 1` (défaut CSS) empêchait `.wrap` de déborder du container flex quand le contenu zoomé dépassait la taille du parent — le scroll ne capturait pas la zone zoomée. Ajout de `flex-shrink: 0` sur `.wrap` + `overflow: auto` (les deux axes) sur `.preview-body`. Le scroll horizontal et vertical fonctionne maintenant après zoom.
+
+---
+
 ## v0.8.5 — Fenêtre détachée : pleine largeur sans padding
 
 ### Fix — contenu ne remplissait pas toute la largeur en mode tableau de bord
