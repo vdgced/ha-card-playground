@@ -4,6 +4,18 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.8.0 — Fenêtre détachée : hauteur écran + zoom inline
+
+### Fix — hauteur fenêtre détachée
+
+La fenêtre détachée utilisait `min-height: 100vh` sans tenir compte de la barre HA. Corrigé avec `height: calc(100vh - var(--header-height, 56px))` + `overflow-y: auto` — la fenêtre occupe exactement la zone disponible sous la barre.
+
+### UX — zoom fenêtre directement à côté du bouton "Réintégrer"
+
+Le contrôle de zoom de la fenêtre détachée est maintenant placé côte à côte avec le bouton "↙ Réintégrer l'aperçu", dans le même bloc horizontal. Suppression du panneau séparé.
+
+---
+
 ## v0.7.99 — Fenêtre détachée : fix vignette, largeur tableau de bord, zoom éditeur
 
 ### Fix — vignette invisible dans la fenêtre détachée (écran externe)

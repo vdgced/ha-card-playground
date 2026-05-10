@@ -545,11 +545,6 @@ content: |
       align-items: center; justify-content: center;
       gap: 16px; color: var(--secondary-text-color); font-size: 14px;
     }
-    .win-zoom-row {
-      display: flex; flex-direction: column; align-items: center;
-      padding: 12px 16px; border-radius: 10px;
-      border: 1px solid var(--divider-color);
-    }
     .reattach-btn {
       display: flex; flex-direction: column; align-items: center; gap: 6px;
       padding: 16px 24px; border-radius: 12px; cursor: pointer;
@@ -4199,22 +4194,24 @@ content: |
         <div class="preview-pane">
           ${this._detached ? html`
             <div class="detached-msg">
-              <button class="reattach-btn" @click=${this._reattach}>
-                <div style="font-size:36px">↙</div>
-                <div style="font-size:14px;font-weight:500">Réintégrer l'aperçu</div>
-                <div style="font-size:11px;opacity:.5">Ferme la fenêtre externe</div>
-              </button>
-              <div class="win-zoom-row">
-                <span style="font-size:11px;opacity:.5;text-transform:uppercase;letter-spacing:.05em">Zoom fenêtre</span>
-                <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
-                  <button class="zoom-btn" @click=${()=>{this._winZoom=Math.max(10,this._winZoom-5)}}>−</button>
-                  <input type="range" min="10" max="200" step="5"
-                    .value=${String(this._winZoom)}
-                    style="width:90px;cursor:pointer;accent-color:var(--primary-color)"
-                    @input=${(e:Event)=>{this._winZoom=Number((e.target as HTMLInputElement).value);}}>
-                  <span style="font-size:13px;font-weight:700;min-width:38px;text-align:center">${this._winZoom}%</span>
-                  <button class="zoom-btn" @click=${()=>{this._winZoom=Math.min(200,this._winZoom+5)}}>+</button>
-                  <button class="zoom-btn" title="Réinitialiser" @click=${()=>{this._winZoom=100}}>↺</button>
+              <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:center">
+                <button class="reattach-btn" @click=${this._reattach}>
+                  <div style="font-size:36px">↙</div>
+                  <div style="font-size:14px;font-weight:500">Réintégrer l'aperçu</div>
+                  <div style="font-size:11px;opacity:.5">Ferme la fenêtre externe</div>
+                </button>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+                  <span style="font-size:10px;opacity:.45;text-transform:uppercase;letter-spacing:.06em">Zoom fenêtre</span>
+                  <div style="display:flex;align-items:center;gap:4px">
+                    <button class="zoom-btn" @click=${()=>{this._winZoom=Math.max(10,this._winZoom-5)}}>−</button>
+                    <input type="range" min="10" max="200" step="5"
+                      .value=${String(this._winZoom)}
+                      style="width:80px;cursor:pointer;accent-color:var(--primary-color)"
+                      @input=${(e:Event)=>{this._winZoom=Number((e.target as HTMLInputElement).value);}}>
+                    <span style="font-size:13px;font-weight:700;min-width:36px;text-align:center">${this._winZoom}%</span>
+                    <button class="zoom-btn" @click=${()=>{this._winZoom=Math.min(200,this._winZoom+5)}}>+</button>
+                    <button class="zoom-btn" title="Réinitialiser" @click=${()=>{this._winZoom=100}}>↺</button>
+                  </div>
                 </div>
               </div>
             </div>` : html`
@@ -4269,11 +4266,11 @@ class HaCardPlaygroundPreview extends LitElement {
   static styles = css`
     :host {
       display: flex; align-items: flex-start; justify-content: center;
-      min-height: calc(100vh - var(--header-height, 56px));
-      padding: 24px; box-sizing: border-box;
+      height: calc(100vh - var(--header-height, 56px));
+      overflow-y: auto; padding: 24px; box-sizing: border-box;
       background: var(--primary-background-color, #111827);
     }
-    :host([wide]) { padding: 8px; align-items: stretch; }
+    :host([wide]) { padding: 8px; align-items: stretch; overflow-y: auto; }
     :host([wide]) .wrap { margin: 0; }
     .wrap { width: 100%; max-width: 540px; --ha-card-border-width: 0px; margin-top: auto; margin-bottom: auto; }
     .card-host { display: contents; }
