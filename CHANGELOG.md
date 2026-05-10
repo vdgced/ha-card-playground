@@ -4,6 +4,18 @@ Toutes les modifications validées, par version. Les tentatives abandonnées ou 
 
 ---
 
+## v0.8.3 — Fenêtre détachée : barre HA visible + suppression espace vide bas
+
+### Fix — barre de menu HA non visible en fenêtre détachée
+
+Suppression de l'appel à `_hideSidebar()` en mode preview (`IS_PREVIEW`). Cette méthode manipulait le shadow DOM de HA pour masquer la sidebar, mais avait l'effet de bord de cacher aussi la barre du dessus (app-header). La barre HA est désormais visible naturellement dans la fenêtre détachée, comme sur un vrai tableau de bord.
+
+### Fix — espace vide en bas de la fenêtre détachée
+
+Suppression de `min-height: 100vh` sur `:host` du composant preview. Cette valeur forçait la hauteur du fond à 100% de la hauteur de la fenêtre même si la carte était plus petite, créant un vide sous la carte. La hauteur est désormais déterminée par le contenu naturel de HA.
+
+---
+
 ## v0.8.2 — Fenêtre détachée : pleine largeur en mode tableau de bord
 
 ### Fix — carte ne remplissait pas toute la largeur en mode large

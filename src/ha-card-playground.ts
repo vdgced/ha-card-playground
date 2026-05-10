@@ -319,22 +319,7 @@ class HaCardPlayground extends LitElement {
   @property({ attribute: false }) hass?: HomeAssistant;
   @property({ type: Boolean }) narrow = false;
 
-  protected firstUpdated(): void {
-    // En mode preview, cacher la sidebar HA pour avoir plus d'espace
-    if (IS_PREVIEW) {
-      this._hideSidebar();
-    }
-  }
-
-  private _hideSidebar(): void {
-    // Remonte dans le DOM pour trouver et masquer la sidebar HA
-    try {
-      const ha = document.querySelector("home-assistant");
-      const root = (ha as HTMLElement & { shadowRoot: ShadowRoot })?.shadowRoot;
-      const drawer = root?.querySelector("ha-drawer") as HTMLElement | null;
-      if (drawer) drawer.style.setProperty("--mdc-drawer-width", "0px");
-    } catch { /* silencieux */ }
-  }
+  protected firstUpdated(): void {}
 
   render() {
     if (IS_PREVIEW) {
@@ -4266,7 +4251,7 @@ class HaCardPlaygroundPreview extends LitElement {
   static styles = css`
     :host {
       display: flex; align-items: flex-start; justify-content: center;
-      height: 100%; min-height: 100vh; overflow-y: auto;
+      height: 100%; overflow-y: auto;
       padding: 24px; box-sizing: border-box;
       background: var(--primary-background-color, #111827);
     }
